@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-store">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Tuinplanner">
+    <meta name="theme-color" content="#31584a">
+    <title>Tuinplanner</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css?v=20260614-ipad-startup-warning">
+  </head>
+  <body class="no-js">
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Volkstuin</p>
+          <h1>Tuinplanner</h1>
+          <span class="version-label">versie bewerken</span>
+        </div>
+        <div class="top-actions">
+          <select id="designSelect" class="design-select" aria-label="Ontwerp kiezen"></select>
+          <button class="ghost-button" id="newDesignBtn">Nieuw</button>
+          <button class="ghost-button" id="saveAsBtn">Bewaar als</button>
+          <button class="ghost-button" id="exportBtn">Export</button>
+          <button class="ghost-button" id="importBtn">Import</button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden>
+          <button class="icon-button" id="undoBtn" title="Ongedaan maken" aria-label="Ongedaan maken">↶</button>
+          <button class="icon-button" id="redoBtn" title="Opnieuw" aria-label="Opnieuw">↷</button>
+          <button class="icon-button" id="printBtn" title="Afdrukken" aria-label="Afdrukken">⎙</button>
+          <button class="primary-button" id="sampleBtn">Voorbeeld</button>
+        </div>
+      </header>
+
+      <div class="runtime-warning" id="runtimeWarning">
+        Deze weergave is alleen een voorvertoning. De planner kan hier niet goed bewerken. Open de app in Safari via een webadres om maatvoering, basisvormen en lijsten te gebruiken.
+      </div>
+
+      <main class="workspace">
+        <aside class="panel tools-panel" aria-label="Gereedschap">
+          <section>
+            <div class="section-head">
+              <h2>Maatvoering</h2>
+              <span id="areaLabel">0 m2</span>
+            </div>
+            <div class="field-grid">
+              <label>
+                Boven
+                <span>
+                  <input id="gardenTop" type="number" min="1" max="60" step="0.5" value="6">
+                  m
+                </span>
+              </label>
+              <label>
+                Rechts
+                <span>
+                  <input id="gardenRight" type="number" min="1" max="80" step="0.5" value="14">
+                  m
+                </span>
+              </label>
+              <label>
+                Onder
+                <span>
+                  <input id="gardenBottom" type="number" min="1" max="60" step="0.5" value="7">
+                  m
+                </span>
+              </label>
+              <label>
+                Links
+                <span>
+                  <input id="gardenLeft" type="number" min="1" max="80" step="0.5" value="14">
+                  m
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section>
+            <div class="section-head">
+              <h2>Element</h2>
+            </div>
+            <div class="tool-grid" id="toolGrid"></div>
+          </section>
+
+          <section>
+            <div class="section-head">
+              <h2>Gewas</h2>
+            </div>
+            <div class="add-crop">
+              <label>
+                Nieuwe plant
+                <input id="newCropName" type="text" placeholder="Bijv. knoflook">
+              </label>
+              <label>
+                Soort
+                <select id="newCropKind">
+                  <option value="crop">Groente</option>
+                  <option value="fruit">Fruit</option>
+                  <option value="herb">Kruid</option>
+                </select>
+              </label>
+              <div class="field-grid">
+                <label>
+                  Zaaien
+                  <input id="newCropSow" type="text" placeholder="3-4">
+                </label>
+                <label>
+                  Oogst
+                  <input id="newCropHarvest" type="text" placeholder="7-8">
+                </label>
+              </div>
+              <button id="addCropBtn" class="ghost-button">Voeg toe</button>
+            </div>
+            <h3 class="list-title">Groente</h3>
+            <div class="crop-list" id="cropList"></div>
+          </section>
+
+          <section>
+            <div class="section-head">
+              <h2>Fruit</h2>
+            </div>
+            <div class="crop-list fruit-list" id="fruitList"></div>
+          </section>
+
+          <section>
+            <div class="section-head">
+              <h2>Kruiden</h2>
+            </div>
+            <div class="crop-list herb-list" id="herbList"></div>
+          </section>
+        </aside>
+
+        <div class="splitter splitter-left" id="leftSplitter" aria-hidden="true"></div>
+
+        <section class="canvas-panel">
+          <div class="board-toolbar">
+            <div>
+              <strong id="gardenTitle">Moestuin</strong>
+              <span id="selectionSummary">Geen vak geselecteerd</span>
+            </div>
+            <div class="board-actions">
+              <label class="toggle">
+                <input id="snapToggle" type="checkbox" checked>
+                <span>Raster</span>
+              </label>
+              <label class="select-label">
+                Stap
+                <select id="gridSize">
+                  <option value="2x1">2 x 1 m</option>
+                  <option value="1x1" selected>1 x 1 m</option>
+                  <option value="0.5x0.5">0,5 x 0,5 m</option>
+                </select>
+              </label>
+              <div class="zoom-controls" aria-label="Zoom">
+                <button id="zoomOutBtn" class="icon-button" title="Uitzoomen" aria-label="Uitzoomen">−</button>
+                <button id="zoomResetBtn" class="ghost-button">100%</button>
+                <button id="zoomInBtn" class="icon-button" title="Inzoomen" aria-label="Inzoomen">+</button>
+              </div>
+              <button id="boundaryEditBtn" class="ghost-button" type="button">Tuinrand</button>
+              <button id="addBoundaryPointBtn" class="ghost-button">Randpunt +</button>
+              <button id="removeBoundaryPointBtn" class="ghost-button">Randpunt −</button>
+              <button id="clearBtn" class="ghost-button">Leegmaken</button>
+            </div>
+          </div>
+          <div class="board-shell">
+            <div class="board-measure">
+              <div class="ruler-corner"></div>
+              <div id="rulerTop" class="ruler ruler-top" aria-hidden="true"></div>
+              <div id="rulerLeft" class="ruler ruler-left" aria-hidden="true"></div>
+              <div id="gardenBoard" class="garden-board" aria-label="Tuinontwerp"></div>
+            </div>
+            <div id="printTitle" class="print-title" aria-hidden="true">Tuinplanner</div>
+          </div>
+        </section>
+
+        <div class="splitter splitter-right" id="rightSplitter" aria-hidden="true"></div>
+
+        <aside class="panel details-panel" aria-label="Details">
+          <section>
+            <div class="section-head">
+              <h2>Details</h2>
+            </div>
+            <div id="emptyDetails" class="empty-state">Selecteer een vak.</div>
+            <div id="detailsForm" class="details-form" hidden>
+              <label>
+                Naam
+                <input id="itemLabel" type="text">
+              </label>
+              <div class="field-grid">
+                <label>
+                  X
+                  <span><input id="itemX" type="number" min="0" step="0.1"> m</span>
+                </label>
+                <label>
+                  Y
+                  <span><input id="itemY" type="number" min="0" step="0.1"> m</span>
+                </label>
+                <label>
+                  Breedte
+                  <span><input id="itemW" type="number" min="0.1" step="0.1"> m</span>
+                </label>
+                <label>
+                  Lengte
+                  <span><input id="itemH" type="number" min="0.1" step="0.1"> m</span>
+                </label>
+                <label>
+                  Hoek
+                  <span><input id="itemRotation" type="number" step="1"> °</span>
+                </label>
+                <label>
+                  Kleur
+                  <input id="itemColor" type="color">
+                </label>
+                <label>
+                  Vorm
+                  <select id="itemShape">
+                    <option value="rect">Rechthoek</option>
+                    <option value="circle">Rond</option>
+                    <option value="triangle">Driehoek</option>
+                    <option value="free">Vrije vorm</option>
+                    <option value="greenhouse">Kas</option>
+                  </select>
+                </label>
+              </div>
+              <div class="freeform-actions">
+                <button id="addPointBtn" class="ghost-button">Punt erbij</button>
+                <button id="removePointBtn" class="ghost-button">Punt weg</button>
+                <button id="drawShapeBtn" class="ghost-button">Teken vorm</button>
+              </div>
+              <label>
+                Notities
+                <textarea id="itemNotes" rows="3"></textarea>
+              </label>
+              <button id="openGreenhouseBtn" class="primary-button" hidden>Open kas</button>
+              <details class="actions-menu">
+                <summary>Bewerken</summary>
+                <div class="rotation-controls">
+                  <button id="rotateLeftBtn" class="ghost-button">-5°</button>
+                  <button id="rotateBtn" class="ghost-button">+90°</button>
+                  <button id="rotateRightBtn" class="ghost-button">+5°</button>
+                </div>
+                <div class="parallel-controls">
+                  <button id="parallelTopBtn" class="ghost-button">Boven</button>
+                  <button id="parallelLeftBtn" class="ghost-button">Links</button>
+                  <button id="parallelRightBtn" class="ghost-button">Rechts</button>
+                  <button id="parallelBottomBtn" class="ghost-button">Onder</button>
+                </div>
+                <div class="detail-actions">
+                  <button id="copyBtn" class="ghost-button">Kopieer</button>
+                  <button id="cutBtn" class="ghost-button">Knip</button>
+                  <button id="pasteBtn" class="ghost-button">Plak</button>
+                  <button id="duplicateBtn" class="ghost-button">Dupliceer</button>
+                  <button id="deleteBtn" class="danger-button">Verwijder</button>
+                </div>
+              </details>
+              <div class="shortcut-note">
+                ⌘Z · ⇧⌘Z · ⌘C · ⌘X · ⌘V
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div class="section-head">
+              <h2>Planning</h2>
+              <span id="planningMode">Alles</span>
+            </div>
+            <div id="cropInfo" class="crop-info"></div>
+            <div class="calendar" id="calendar"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="greenhouseModal" class="modal-backdrop" hidden>
+      <section class="greenhouse-window" aria-label="Kasindeling">
+        <header class="modal-head">
+          <div>
+            <p class="eyebrow">Kas</p>
+            <h2 id="greenhouseTitle">Kasindeling</h2>
+          </div>
+          <button class="icon-button" id="closeGreenhouseBtn" title="Sluiten" aria-label="Sluiten">×</button>
+        </header>
+        <div class="greenhouse-body">
+          <aside class="greenhouse-tools">
+            <div class="section-head">
+              <h2>Planten</h2>
+            </div>
+            <div id="greenhouseCropList" class="crop-list"></div>
+            <div class="detail-actions">
+              <button id="deleteGreenhousePlantBtn" class="danger-button">Verwijder plant</button>
+            </div>
+          </aside>
+          <div class="greenhouse-board-wrap">
+            <div id="greenhouseBoard" class="greenhouse-board" aria-label="Kasbord"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="app.js?v=20260614-ipad-startup-warning"></script>
+  </body>
+</html>

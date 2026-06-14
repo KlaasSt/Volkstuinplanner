@@ -1,0 +1,11 @@
+{
+  "name": "Tuinplanner",
+  "short_name": "Tuin",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f4eb",
+  "theme_color": "#31584a",
+  "description": "Ontwerp en plan een volkstuin met groentevakken, maatvoering en seizoensplanning."
+}
