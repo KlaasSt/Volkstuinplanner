@@ -50,7 +50,7 @@ const months = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "
 const storageKey = "tuinplanner-state-v3";
 const designsKey = "tuinplanner-designs-v3";
 const currentDesignKey = "tuinplanner-current-design-v3";
-const appVersion = "ipad-startup-warning-20260614";
+const appVersion = "freeform-drawing-fix-20260614";
 const minItemSize = 0.1;
 const snapStep = 0.1;
 const gridOptions = {
@@ -380,6 +380,13 @@ function simplifyDrawnFreePoints(points) {
 
 function freeSvgMarkup(points) {
   return `<svg class="free-shape" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="free-fill" d="${roundedFreePath(points)}"></path></svg>`;
+}
+
+function freeDrawMarkup(points) {
+  const clean = Array.isArray(points) ? points : [];
+  if (!clean.length) return "";
+  const path = clean.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  return `<svg class="free-shape free-draw-preview" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="${path}"></path></svg>`;
 }
 
 function gardenOutlineMarkup() {
@@ -1190,14 +1197,21 @@ function renderBoard() {
     el.style.height = `${(plot.h / height) * 100}%`;
     el.style.setProperty("--rotation", `${plot.rotation || 0}deg`);
     el.style.setProperty("--item-color", plot.color);
-    const freeRect = plot.shape === "free" && isRectangularFreeShape(plot.points);
+    const isDrawing = state.drawingItemId === plot.id;
+    const freeRect = plot.shape === "free" && !isDrawing && isRectangularFreeShape(plot.points);
+    let drawingPoints = [];
     if (plot.shape === "free") {
-      plot.points = normalizeFreePoints(plot.points);
+      if (isDrawing) {
+        drawingPoints = Array.isArray(plot.points) ? plot.points : [];
+      } else {
+        plot.points = normalizeFreePoints(plot.points);
+      }
       el.dataset.selectedPoint = String(plot.selectedPointIndex ?? -1);
       el.dataset.freeRect = String(freeRect);
     }
     el.innerHTML = `
-      ${plot.shape === "free" && !freeRect ? freeSvgMarkup(plot.points) : ""}
+      ${plot.shape === "free" && isDrawing ? freeDrawMarkup(drawingPoints) : ""}
+      ${plot.shape === "free" && !freeRect && !isDrawing ? freeSvgMarkup(plot.points) : ""}
       <span class="plot-name">${plot.label}</span>
       <span></span>
       <span class="plot-meta">${formatMeters(plot.w)} x ${formatMeters(plot.h)} m</span>
@@ -1362,6 +1376,7 @@ function renderDetails() {
     detailsForm.hidden = true;
     selectionSummary.textContent = "Geen vak geselecteerd";
     planningMode.textContent = "Alles";
+    document.querySelector(".freeform-actions").hidden = true;
     document.querySelector("#addPointBtn").disabled = true;
     document.querySelector("#removePointBtn").disabled = true;
     document.querySelector("#drawShapeBtn").disabled = true;
@@ -1381,6 +1396,7 @@ function renderDetails() {
   inputs.itemShape.value = normalizeShape(editable.shape);
   inputs.itemNotes.value = editable.notes || "";
   const freeEditable = Boolean(selected) && normalizeShape(editable.shape) === "free" && mode !== "boundary" && mode !== "place";
+  document.querySelector(".freeform-actions").hidden = !freeEditable;
   document.querySelector("#addPointBtn").disabled = !freeEditable;
   document.querySelector("#removePointBtn").disabled = !freeEditable;
   document.querySelector("#drawShapeBtn").disabled = !freeEditable;
@@ -1604,6 +1620,8 @@ function startShapePointPointer(event, id, pointIndex) {
   event.preventDefault();
   event.stopPropagation();
 
+  if (state.drawingItemId === id) return;
+
   const plot = state.items.find((candidate) => candidate.id === id);
   if (!plot) return;
   const undoOriginal = clonePlot(plot);
@@ -1656,24 +1674,21 @@ function startItemPointer(event, id) {
   if (mode === "boundary") return;
 
   const rect = board.getBoundingClientRect();
-  const isResize = event.target.classList.contains("resize-handle");
-  const isShapePoint = event.target.classList.contains("shape-point");
   const itemRect = event.currentTarget.getBoundingClientRect();
-  const pointIndex = isShapePoint ? Number(event.target.dataset.pointIndex) : null;
-
-  if (mode === "place" && isShapePoint) return;
-  if (mode !== "select" && isResize) return;
 
   if (state.drawingItemId === id) {
     const original = clonePlot(plot);
     plot.shape = "free";
     plot.points = [pointFromItemEvent(event, itemRect)];
+    plot.selectedPointIndex = null;
+    plot.lastPointIndex = null;
     interaction = {
       id,
       mode: "draw",
       rect,
       itemRect,
       original,
+      undoOriginal: original,
       changed: true
     };
     try {
@@ -1682,8 +1697,16 @@ function startItemPointer(event, id) {
       // Some browser automation/touch layers do not expose an active pointer id.
     }
     renderBoard();
+    renderDetails();
     return;
   }
+
+  const isResize = event.target.classList.contains("resize-handle");
+  const isShapePoint = event.target.classList.contains("shape-point");
+  const pointIndex = isShapePoint ? Number(event.target.dataset.pointIndex) : null;
+
+  if (mode === "place" && isShapePoint) return;
+  if (mode !== "select" && isResize) return;
 
   interaction = {
     id,

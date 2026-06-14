@@ -765,6 +765,19 @@ body[data-palette-dragging="true"] .garden-board {
   box-shadow: 0 0 0 3px rgba(255, 253, 247, 0.9), 0 10px 24px rgba(23, 34, 28, 0.26);
 }
 
+.free-draw-preview {
+  z-index: 2;
+}
+
+.free-draw-preview path {
+  fill: none;
+  stroke: #17231b;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
 .plot-name {
   width: 100%;
   display: -webkit-box;

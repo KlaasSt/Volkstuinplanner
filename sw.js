@@ -1,11 +1,11 @@
-const CACHE_NAME = "tuinplanner-plant-standard-resize-20260614";
+const CACHE_NAME = "tuinplanner-freeform-drawing-fix-20260614";
 const APP_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
-  "./styles.css?v=20260614-plant-standard-resize",
+  "./styles.css?v=20260614-freeform-drawing-fix",
   "./app.js",
-  "./app.js?v=20260614-plant-standard-resize",
+  "./app.js?v=20260614-freeform-drawing-fix",
   "./manifest.webmanifest",
   "./sw.js"
 ];
