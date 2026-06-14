@@ -1,11 +1,11 @@
-const CACHE_NAME = "tuinplanner-freeform-drawing-fix-20260614";
+const CACHE_NAME = "tuinplanner-freeform-tight-bounds-20260614";
 const APP_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
-  "./styles.css?v=20260614-freeform-drawing-fix",
+  "./styles.css?v=20260614-freeform-tight-bounds",
   "./app.js",
-  "./app.js?v=20260614-freeform-drawing-fix",
+  "./app.js?v=20260614-freeform-tight-bounds",
   "./manifest.webmanifest",
   "./sw.js"
 ];

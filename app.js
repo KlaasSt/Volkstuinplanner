@@ -50,7 +50,7 @@ const months = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "
 const storageKey = "tuinplanner-state-v3";
 const designsKey = "tuinplanner-designs-v3";
 const currentDesignKey = "tuinplanner-current-design-v3";
-const appVersion = "freeform-drawing-fix-20260614";
+const appVersion = "freeform-tight-bounds-20260614";
 const minItemSize = 0.1;
 const snapStep = 0.1;
 const gridOptions = {
@@ -359,7 +359,9 @@ function limitPoints(points, maxPoints) {
 }
 
 function simplifyDrawnFreePoints(points) {
-  let source = normalizeFreePoints(points);
+  let source = Array.isArray(points)
+    ? points.map((point) => ({ x: clamp(Number(point.x) || 0, 0, 100), y: clamp(Number(point.y) || 0, 0, 100) }))
+    : [];
   if (source.length > 4 && distanceBetweenPoints(source[0], source[source.length - 1]) < 5) {
     source = source.slice(0, -1);
   }
@@ -1802,8 +1804,9 @@ function endInteraction() {
   if (interaction.mode === "draw" && livePlot) {
     const simplified = simplifyDrawnFreePoints(livePlot.points || []);
     if (simplified.length >= 3) {
+      const absolutePoints = absoluteFreePoints(interaction.original, simplified);
       livePlot.shape = "free";
-      livePlot.points = simplified;
+      fitFreeShapeToAbsolutePoints(livePlot, absolutePoints);
       livePlot.selectedPointIndex = null;
       livePlot.lastPointIndex = null;
     } else {
