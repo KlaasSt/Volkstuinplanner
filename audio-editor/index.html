@@ -166,10 +166,12 @@ kbd {
     <span class="sep"></span>
     <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
     <span class="sep"></span>
-    <button id="destBtn" title="Doelpunt in de edit op de afspeelkop, ook tijdens het afspelen (D)">◆ Doelpunt</button>
+    <span class="group" title="Doelpunten in de edit, op de afspeelkop — ook tijdens het afspelen. Of sleep in de tijdbalk over het stuk dat je wilt vervangen.">Doel
+      <button id="destBtn" title="Doel in: hier begint de wissel (D)">◆ in</button><button id="destOutBtn" title="Doel uit: tot hier vervangen, daarna gaat de edit verder zoals hij was (⇧D)">uit ◆</button></span>
     <button id="alignHereBtn" title="Alle takes zo verschuiven dat dezelfde passage onder de afspeelkop ligt (H). De edit blijft staan.">Takes hier uitlijnen</button>
-    <button id="srcBtn" title="Bronpunt in de geselecteerde (of solo spelende) take op de afspeelkop (B)">◇ Bronpunt</button>
-    <button id="compBtn" title="Overnemen: vanaf het doelpunt verder met de take (E). Of: geselecteerd stuk uit een take in de edit plaatsen.">Overnemen</button>
+    <span class="group" title="Optioneel: zelf de plek in de take aanwijzen. Zonder bronpunten zoekt de editor de bijbehorende plek zelf.">Bron
+      <button id="srcBtn" title="Bron in, in de geselecteerde of solo spelende take (B)">◇ in</button><button id="srcOutBtn" title="Bron uit (⇧B)">uit ◇</button></span>
+    <button id="compBtn" title="Overnemen (E): het stuk tussen Doel in en uit vervangen — of met alleen Doel in: tot de volgende wissel. ⌥E: alles na Doel in vervangen. Of: een geselecteerd stuk uit een take in de edit plaatsen.">Overnemen</button>
     <span class="sep"></span>
     <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
     <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
@@ -1323,19 +1325,37 @@ function drawBase() {
     }
   }
 
-  // doel- en bronpunt
-  if (S.pts.dest != null) {
-    const x = Math.round(px(S.pts.dest)) + 0.5;
+  // doel- en bronpunten
+  const flag = (x, y, txt) => {
+    g.font = 'bold 10px system-ui, sans-serif'; g.textBaseline = 'middle';
+    const w = g.measureText(txt).width + 6;
+    g.fillStyle = '#0f1115'; g.fillRect(x + 3, y, w, 13); g.fillStyle = '#ffd32a'; g.fillText(txt, x + 6, y + 7);
+  };
+  const P = S.pts;
+  if (P.dest != null) {
+    const x = Math.round(px(P.dest)) + 0.5;
+    if (P.destOut != null) {
+      const x2 = Math.round(px(P.destOut)) + 0.5;
+      g.fillStyle = 'rgba(255,211,42,0.13)'; g.fillRect(x, RULER, x2 - x, EDIT_H);
+      g.fillStyle = '#ffd32a'; g.fillRect(x2 - 1, RULER, 2, EDIT_H);
+      flag(x2, RULER + 2, 'D uit');
+    }
     g.fillStyle = '#ffd32a'; g.fillRect(x - 1, RULER, 2, EDIT_H);
     g.beginPath(); g.moveTo(x - 7, RULER + EDIT_H - 1); g.lineTo(x + 7, RULER + EDIT_H - 1); g.lineTo(x, RULER + EDIT_H - 10); g.closePath(); g.fill();
-    g.fillStyle = '#0f1115'; g.fillRect(x + 3, RULER + 2, 14, 13); g.fillStyle = '#ffd32a'; g.font = 'bold 10px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('D', x + 6, RULER + 9);
+    flag(x, RULER + 2, P.destOut != null ? 'D in' : 'D');
   }
-  if (S.pts.src) {
-    const k = S.takes.findIndex((t) => t.id === S.pts.src.takeId);
+  if (P.src) {
+    const k = S.takes.findIndex((t) => t.id === P.src.takeId);
     if (k >= 0) {
-      const tk = S.takes[k], y0 = RULER + EDIT_H + k * TAKE_H, x = Math.round(px(tk.sync + S.pts.src.s)) + 0.5;
+      const tk = S.takes[k], y0 = RULER + EDIT_H + k * TAKE_H, x = Math.round(px(tk.sync + P.src.s)) + 0.5;
+      if (P.srcOut != null) {
+        const x2 = Math.round(px(tk.sync + P.srcOut)) + 0.5;
+        g.fillStyle = 'rgba(255,211,42,0.13)'; g.fillRect(x, y0 + 2, x2 - x, TAKE_H - 4);
+        g.fillStyle = '#ffd32a'; g.fillRect(x2 - 1, y0 + 2, 2, TAKE_H - 4);
+        flag(x2, y0 + 4, 'B uit');
+      }
       g.fillStyle = '#ffd32a'; g.fillRect(x - 1, y0 + 2, 2, TAKE_H - 4);
-      g.fillStyle = '#0f1115'; g.fillRect(x + 3, y0 + 4, 14, 13); g.fillStyle = '#ffd32a'; g.font = 'bold 10px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('B', x + 6, y0 + 11);
+      flag(x, y0 + 4, P.srcOut != null ? 'B in' : 'B');
     }
   }
 
@@ -1587,7 +1607,8 @@ function renderInspector() {
     <h2>Zo werkt het</h2>
     <ol>
       <li><b>Importeer je takes</b> (wav, aiff, flac, mp3, m4a…), of sleep ze in het venster. De eerste take komt meteen in de <b>edit</b> (bovenste baan); alle takes staan eronder.</li>
-      <li><b>Vrij tempo (bron/doel, zoals in Sequoia):</b> speel de edit af en druk <kbd>D</kbd> op de noot waar je wilt wisselen (doelpunt). Druk <kbd>H</kbd>: alle takes schuiven zo dat dezelfde passage onder de afspeelkop ligt. Klik de take die je wilt en druk <kbd>E</kbd>: vanaf het doelpunt gaat de edit verder met die take, met een crossfade. Wil je het bronpunt zelf kiezen, klik dan in de take op de noot (of speel hem solo) en druk <kbd>B</kbd> vóór <kbd>E</kbd>. Terug naar de oude take? Zelfde werkwijze, een paar maten later.</li>
+      <li><b>Vrij tempo (bron/doel, zoals in Sequoia):</b> speel de edit af en druk <kbd>D</kbd> op de noot waar je wilt wisselen (doelpunt). Druk <kbd>H</kbd>: alle takes schuiven zo dat dezelfde passage onder de afspeelkop ligt. Klik de take die je wilt en druk <kbd>E</kbd>: vanaf het doelpunt gaat de edit verder met die take, met een crossfade. Wil je het bronpunt zelf kiezen, klik dan in de take op de noot (of speel hem solo) en druk <kbd>B</kbd> vóór <kbd>E</kbd>. Staan er verderop al wissels, dan loopt de nieuwe take tot de eerstvolgende wissel en blijft de rest staan; je hoeft dus niet op volgorde te werken (<kbd>⌥E</kbd> vervangt wél alles erna).</li>
+      <li><b>Eén noot of kort stuk vervangen:</b> sleep in de tijdbalk over de noot (of zet <kbd>D</kbd> en <kbd>⇧D</kbd>), klik de take die je wilt en druk <kbd>E</kbd>. De editor zoekt in die take zelf het begin én eind van hetzelfde stuk en zet het ertussen, met crossfades. De rest van de edit blijft zoals hij was.</li>
       <li><b>Takes op een klik:</b> sleep in een take-baan om een stuk te selecteren en druk <kbd>E</kbd>. Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten.</li>
       <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
       <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
@@ -1597,7 +1618,7 @@ function renderInspector() {
     <div class="keys">
       <span><kbd>Spatie</kbd> afspelen / stoppen</span>
       <span><kbd>S</kbd> knippen op afspeelkop</span>
-      <span><kbd>D</kbd> doelpunt · <kbd>B</kbd> bronpunt · <kbd>E</kbd> overnemen</span>
+      <span><kbd>D</kbd> / <kbd>⇧D</kbd> doel in/uit · <kbd>B</kbd> / <kbd>⇧B</kbd> bron in/uit · <kbd>E</kbd> overnemen</span>
       <span><kbd>H</kbd> takes hier uitlijnen</span>
       <span><kbd>A</kbd> crossfade beluisteren</span>
       <span><kbd>Delete</kbd> clip verwijderen</span>
@@ -1785,7 +1806,7 @@ function compRange() {
    Doelpunt D: een plek in de edit. Bronpunt B: dezelfde noot in een take.
    Overnemen: de edit gaat vanaf D verder met de take vanaf B (alles na D wordt vervangen),
    met een crossfade op D. Werkt ook als de takes in tempo verschillen. */
-S.pts = { dest: null, src: null };
+S.pts = { dest: null, destOut: null, src: null, srcOut: null };
 
 /** Take waar een bronpunt bij hoort: de take die solo speelt, anders de geselecteerde take. */
 function sourceTakeContext() {
@@ -1796,23 +1817,44 @@ function sourceTakeContext() {
   return null;
 }
 
-function setDestPoint(t = S.playhead) {
-  S.pts.dest = Math.max(0, t);
+/** D = doel in, ⇧D = doel uit. Na het zetten van 'in' vervalt een eerder 'uit' als dat ervoor ligt. */
+function setDestPoint(t = S.playhead, out = false) {
+  t = Math.max(0, t);
+  const P = S.pts;
+  if (out) {
+    if (P.dest == null) { toast('Zet eerst het begin met D (Doel in)'); return; }
+    if (t <= P.dest + 0.02) { toast('Doel uit moet na Doel in liggen'); return; }
+    P.destOut = t;
+  } else {
+    P.dest = t;
+    if (P.destOut != null && P.destOut <= t + 0.02) P.destOut = null;
+  }
   S.dirty = true; updateButtons(); if (!S.playing) renderInspector();
-  toast(`Doelpunt op ${fmt(S.pts.dest, 2)}. Druk H om de takes hier uit te lijnen, kies een take en druk E (of zet eerst een bronpunt met B).`);
+  toast(P.destOut != null
+    ? `Te vervangen: ${fmt(P.dest, 2)} – ${fmt(P.destOut, 2)}. Klik de take die je wilt en druk E.`
+    : `Doel in op ${fmt(P.dest, 2)}. Kies een take en druk E om vanaf hier verder te gaan, of zet ook Doel uit (⇧D) om alleen een stuk te vervangen.`);
 }
 
-function setSourcePoint() {
+/** B = bron in, ⇧B = bron uit (in de geselecteerde of solo spelende take). */
+function setSourcePoint(out = false) {
   const take = sourceTakeContext();
   if (!take) { toast('Klik eerst in een take-baan (of speel een take solo af) en druk dan B'); return; }
   const s = S.playhead - take.sync;
   if (s < 0 || s > take.buffer.duration) { toast('De afspeelkop staat buiten deze take'); return; }
-  S.pts.src = { takeId: take.id, s };
+  const P = S.pts;
+  if (out) {
+    if (!P.src || P.src.takeId !== take.id) { toast('Zet eerst Bron in (B) in deze take'); return; }
+    if (s <= P.src.s + 0.02) { toast('Bron uit moet na Bron in liggen'); return; }
+    P.srcOut = s;
+  } else {
+    P.src = { takeId: take.id, s };
+    if (P.srcOut != null && P.srcOut <= s + 0.02) P.srcOut = null;
+  }
   S.dirty = true; updateButtons(); if (!S.playing) renderInspector();
-  toast(`Bronpunt in "${take.name}" op ${fmt(s, 2)} (in de take).${S.pts.dest == null ? ' Zet nu een doelpunt in de edit met D.' : ' Druk E om over te nemen.'}`);
+  toast(`Bron ${out ? 'uit' : 'in'} in "${take.name}" op ${fmt(s, 2)} (in de take).${P.dest == null ? ' Zet nu Doel in met D.' : ' Druk E om over te nemen.'}`);
 }
 
-function clearPoints() { S.pts = { dest: null, src: null }; S.dirty = true; updateButtons(); }
+function clearPoints() { S.pts = { dest: null, destOut: null, src: null, srcOut: null }; S.dirty = true; updateButtons(); }
 
 /** Mono-signaal van een take over [s0,s1] in de bron (buiten de take: stilte). */
 function takeMono(take, s0, s1, sr) {
@@ -1921,43 +1963,64 @@ function bestLag(e, x, maxL, lo = -maxL, hi = maxL) {
 }
 
 /**
- * Lijn de takes lokaal uit op wat er in de edit rond tijd t klinkt, zoekend tot ±R s.
- * Grof op de noten (toonhoogteprofiel, venster 6 s, midden telt zwaarst), daarna fijn op de inzetten
- * (±8 ms, venster 1 s, binnen ±150 ms).
- * Alleen de take-banen verschuiven (sync); de clips in de edit blijven staan.
+ * Kenmerken van wat de edit rond tijd t laat horen, om takes daarop lokaal uit te lijnen.
+ * Grof op de noten (toonhoogteprofiel, venster 6 s, midden telt zwaarst), fijn op de inzetten (venster 1 s).
  */
-function alignTakesHere(t = S.playhead, R = 8) {
-  const W = 3, Wf = 0.5, rate = 200, sr = 8000;
-  if (!S.clips.some((c) => c.start < t + W && end(c) > t - W)) { toast('Er staat rond de afspeelkop niets in de edit om op uit te lijnen'); return; }
+const AL_W = 3, AL_WF = 0.5, AL_RATE = 200, AL_SR = 8000;
+function editFeatures(t) {
+  const W = AL_W, Wf = AL_WF, rate = AL_RATE, sr = AL_SR;
+  if (!S.clips.some((c) => c.start < t + W && end(c) > t - W)) return null;
   const editOn = onsetCurve(renderMono(t - W - 0.2, t + W + 0.2, sr), sr, rate);
-  const cut = (a, from, len) => a.subarray(from, from + len);
   const n = Math.round(2 * W * rate), nf = Math.round(2 * Wf * rate), off = Math.round(0.2 * rate);
-  const NF = FFTN / sr;   // FFT-venster in s; begin zo dat frame i gecentreerd ligt zoals bij de inzet-curve
-  const eChroma = chromaSeq(renderMono(t - W - NF / 2, t + W + NF / 2, sr), sr, rate, n);
-  const eC = cut(smoothCurve(editOn, 8), off, n);
-  const eF = cut(smoothCurve(editOn, 1.6), off + Math.round((W - Wf) * rate), nf);
-  let ee = 0; for (const v of eC) ee += v * v;
-  if (ee < 1e-12) { toast('Te stil rond de afspeelkop om uit te lijnen'); return; }
+  const NF = FFTN / sr;
+  const f = {
+    t, n, nf, NF,
+    chroma: chromaSeq(renderMono(t - W - NF / 2, t + W + NF / 2, sr), sr, rate, n),
+    coarse: smoothCurve(editOn, 8).subarray(off, off + n),
+    fine: smoothCurve(editOn, 1.6).subarray(off + Math.round((W - Wf) * rate), off + Math.round((W - Wf) * rate) + nf),
+  };
+  let ee = 0; for (const v of f.coarse) ee += v * v;
+  return ee < 1e-12 ? null : f;
+}
+/** Sync waarbij dezelfde passage van 'take' onder tijd f.t ligt (zoekend tot ±R s rond de huidige sync), of null. */
+function matchTake(f, take, R = 8) {
+  const W = AL_W, Wf = AL_WF, rate = AL_RATE, sr = AL_SR;
+  const s0 = f.t - take.sync, maxL = Math.round(R * rate);
+  const raw = onsetCurve(takeMono(take, s0 - W - R, s0 + W + R, sr), sr, rate);
+  const xChroma = chromaSeq(takeMono(take, s0 - W - R - f.NF / 2, s0 + W + R + f.NF / 2, sr), sr, rate, f.n + 2 * maxL);
+  let coarse = bestLagChroma(f.chroma, f.n, xChroma, maxL);
+  if (coarse.score < 0.3) coarse = bestLag(f.coarse, smoothCurve(raw, 8), maxL);   // bijv. slagwerk zonder toonhoogte
+  if (coarse.score < 0.25) return null;
+  const xf = smoothCurve(raw, 1.6), fl = Math.round(0.15 * rate), base = Math.round((W - Wf) * rate);
+  const xs = new Float32Array(f.nf + 2 * maxL);
+  for (let i = 0; i < xs.length; i++) xs[i] = xf[i + base] || 0;
+  const fine = bestLag(f.fine, xs, maxL, coarse.lag - fl, coarse.lag + fl);
+  const lag = fine.score > 0.2 ? fine.lag : coarse.lag;
+  return take.sync - lag / rate;
+}
+
+/** H: lijn alle takes lokaal uit op de edit rond de afspeelkop. Alleen de take-banen verschuiven. */
+function alignTakesHere(t = S.playhead) {
+  const f = editFeatures(t);
+  if (!f) { toast('Er klinkt rond de afspeelkop niets in de edit om op uit te lijnen'); return; }
   const res = [];
   pushUndo();
   for (const take of S.takes) {
-    const s0 = t - take.sync, maxL = Math.round(R * rate);
-    const raw = onsetCurve(takeMono(take, s0 - W - R, s0 + W + R, sr), sr, rate);
-    const xChroma = chromaSeq(takeMono(take, s0 - W - R - NF / 2, s0 + W + R + NF / 2, sr), sr, rate, n + 2 * maxL);
-    let coarse = bestLagChroma(eChroma, n, xChroma, maxL);
-    if (coarse.score < 0.3) coarse = bestLag(eC, smoothCurve(raw, 8), maxL);   // bijv. slagwerk zonder toonhoogte
-    if (coarse.score < 0.25) { res.push(`${take.name}: niet gevonden`); continue; }
-    // fijn: kort venster rond het midden, binnen ±150 ms van de grove schatting
-    const xf = smoothCurve(raw, 1.6), fl = Math.round(0.15 * rate), base = Math.round((W - Wf) * rate);
-    const xs = new Float32Array(nf + 2 * maxL);
-    for (let i = 0; i < xs.length; i++) xs[i] = xf[i + base] || 0;
-    const fine = bestLag(eF, xs, maxL, coarse.lag - fl, coarse.lag + fl);
-    const lag = fine.score > 0.2 ? fine.lag : coarse.lag;
-    take.sync -= lag / rate;
-    res.push(`${take.name} ${lag ? (lag > 0 ? '−' : '+') + Math.abs(lag / rate).toFixed(2) + ' s' : 'klopte al'}`);
+    const ns = matchTake(f, take);
+    if (ns == null) { res.push(`${take.name}: niet gevonden`); continue; }
+    const d = ns - take.sync;
+    take.sync = ns;
+    res.push(`${take.name} ${Math.abs(d) < 0.003 ? 'klopte al' : (d > 0 ? '+' : '−') + Math.abs(d).toFixed(2) + ' s'}`);
   }
   afterEdit();
   toast('Takes uitgelijnd rond ' + fmt(t, 1) + ': ' + res.join(' · '));
+}
+
+/** Waar in 'take' hoort tijd t van de edit bij? Eerst automatisch zoeken, anders de huidige ligging van de baan. */
+function sourcePosFor(take, t) {
+  const f = editFeatures(t);
+  const ns = f ? matchTake(f, take) : null;
+  return { s: t - (ns == null ? take.sync : ns), found: ns != null };
 }
 
 /** Overnemen: vanaf doelpunt d verder met take vanaf bronpositie s; alles na d wordt vervangen. */
@@ -1977,26 +2040,98 @@ function assembleEdit(take, d, s) {
     take.sync = d - s;                                   // take-baan ligt nu gelijk met de edit op dit punt
     const j = junctions().find((x) => x.b.id === nc.id);
     S.sel = j ? { kind: 'junction', a: j.a.id, b: j.b.id } : { kind: 'clip', id: nc.id };
-    S.pts = { dest: null, src: null };
+    clearPoints();
     S.playhead = d;
   });
   toast(`Vanaf ${fmt(d, 1)} verder met "${take.name}"${later ? ` (${later} latere clip${later === 1 ? '' : 's'} vervangen — ⌘Z maakt ongedaan)` : ''}. Stel de overgang hieronder fijn af.`);
 }
 
-/** E: selectie uit een take overnemen, of overnemen vanaf doel-/bronpunt. */
-function editAction() {
+/**
+ * Vervangen (4-punts-edit): [din,dout] in de edit wordt [sin,sout] uit 'take', met crossfades aan beide kanten.
+ * Is het nieuwe stuk langer of korter, dan schuift alles erna dat verschil op; de rest blijft intact.
+ */
+function patchEdit(take, din, dout, sin, sout, dropUntil = null) {
+  const len = take.buffer.duration;
+  if (sin < 0 || sout > len || sout - sin < 0.02) { toast('Het stuk in de take valt (deels) buiten de opname'); return; }
+  const delta = (sout - sin) - (dout - din);
+  mutate(() => {
+    const out = [];
+    for (const c of S.clips) {
+      const ce = end(c);
+      if (ce <= din + 1e-9) { out.push(c); continue; }
+      if (c.start >= dout - 1e-9) { out.push({ ...c, start: c.start + delta }); continue; }
+      if (c.start < din) out.push({ ...c, dur: din - c.start, fadeOut: 0.005 });
+      if (dropUntil != null && ce <= dropUntil + 1e-6) continue;   // uitloop van de vervangen take in de oude crossfade
+      if (ce > dout) out.push({ ...c, id: c.start < din ? newId() : c.id, start: dout + delta, offset: c.offset + (dout - c.start), dur: ce - dout, fadeIn: 0.005, xShape: 'eqp' });
+    }
+    const nc = newClip(take, din, sin, sout - sin);
+    out.push(nc);
+    S.clips = out;
+    for (const mk of S.markers) if (mk.t >= dout - 1e-9) mk.t += delta;
+    normalize();
+    autoXfades(nc);
+    take.sync = din - sin;
+    const j = junctions().find((x) => x.b.id === nc.id);
+    S.sel = j ? { kind: 'junction', a: j.a.id, b: j.b.id } : { kind: 'clip', id: nc.id };
+    clearPoints();
+    S.playhead = Math.max(0, din - S.preroll);
+  });
+  const dms = Math.round(delta * 1000);
+  toast(`${fmt(din, 2)} – ${fmt(dout, 2)} vervangen door "${take.name}"${dms ? ` (${Math.abs(dms)} ms ${dms > 0 ? 'langer' : 'korter'}; de rest schuift mee)` : ''}. L herhaalt de wissel, ⌘Z maakt ongedaan.`);
+}
+
+/**
+ * De eerstvolgende wissel na tijd d: het midden van de crossfade aan het eind van de clip die op d klinkt
+ * (of het eind van die clip als daarna nog iets komt). null als er na d niets meer komt.
+ */
+function nextCutAfter(d) {
+  const cur = [...S.clips].reverse().find((c) => c.start <= d && end(c) > d);
+  if (!cur) return null;
+  const j = junctions().find((x) => x.a === cur);
+  if (j) { const mid = (j.s + j.e) / 2; if (mid > d + 0.05) return { t: mid, dropUntil: j.e }; }
+  if (S.clips.some((c) => c !== cur && c.start >= end(cur) - 1e-6)) return { t: end(cur), dropUntil: null };
+  return null;
+}
+
+/**
+ * E: selectie uit een take overnemen, of overnemen/vervangen met doel- en bronpunten.
+ * Alleen D gezet: de take loopt tot de volgende bestaande wissel; daarna gaat de edit verder zoals hij was.
+ * replaceRest (⌥E): alles na D vervangen door de take.
+ */
+function editAction(replaceRest = false) {
   if (S.range) { compRange(); return; }
-  const d = S.pts.dest;
-  if (d == null) { toast('Zet eerst een doelpunt in de edit (D), of selecteer een stuk in een take'); return; }
-  let take, s;
-  if (S.pts.src) { take = takeOf(S.pts.src.takeId); s = S.pts.src.s; }
+  const P = S.pts, d = P.dest;
+  let dOut = P.destOut, dropUntil = null, auto = false;
+  if (d != null && dOut == null && !replaceRest) {
+    const nx = nextCutAfter(d);
+    if (nx) { dOut = nx.t; dropUntil = nx.dropUntil; auto = true; }
+  }
+  if (d == null) { toast('Zet eerst Doel in (D) — of sleep in de tijdbalk over het stuk dat je wilt vervangen — of selecteer een stuk in een take'); return; }
+  let take, sIn, notFound = false;
+  if (P.src) { take = takeOf(P.src.takeId); sIn = P.src.s; }
   else {
     take = sourceTakeContext();
     if (!take) { toast('Kies een take: klik op de naam of in de baan van de take (of zet een bronpunt met B)'); return; }
-    s = d - take.sync;                                   // zonder bronpunt: de plek die nu onder het doelpunt ligt
+    busy(true, 'Dezelfde plek in de take zoeken…');
+    const r = sourcePosFor(take, d); sIn = r.s; notFound = !r.found;
   }
   if (S.playing) stop();
-  assembleEdit(take, d, s);
+  if (dOut == null) { busy(false); assembleEdit(take, d, sIn); }
+  else {
+    let sOut;
+    if (P.srcOut != null && P.src && P.src.takeId === take.id) sOut = P.srcOut;
+    else {
+      busy(true, 'Het eind van het stuk in de take zoeken…');
+      // zoek het eind ten opzichte van het gevonden begin (zo verschuift de zoekruimte mee)
+      const tmp = take.sync; take.sync = d - sIn;
+      const r = sourcePosFor(take, dOut); sOut = r.s; notFound = notFound || !r.found;
+      take.sync = tmp;
+    }
+    busy(false);
+    patchEdit(take, d, dOut, sIn, sOut, dropUntil);
+    if (auto) setTimeout(() => toast(`"${take.name}" loopt tot de volgende wissel (${fmt(dOut, 1)}); daarna gaat de edit verder zoals hij was. Alles erna vervangen? ⌥E.`), 2600);
+  }
+  if (notFound) setTimeout(() => toast('Let op: de bijbehorende plek in de take kon niet zeker worden gevonden. Controleer de wissel, of zet zelf B (en ⇧B).'), 2800);
 }
 
 /* ---------- markers + herhalen ---------- */
@@ -2477,6 +2612,7 @@ cv.addEventListener('pointermove', (e) => {
       const t0 = Math.max(0, snapT(d.t0, null, false)), t1 = Math.max(0, snapT(tAt(x), null, false));
       if (!S.sel || S.sel.kind !== 'erange') { S.sel = { kind: 'erange', t0, t1 }; S.range = null; }
       S.sel.t0 = t0; S.sel.t1 = t1;
+      if (Math.abs(t1 - t0) > 0.02) { S.pts.dest = Math.min(t0, t1); S.pts.destOut = Math.max(t0, t1); }
       break;
     }
     case 'pan':
@@ -2659,9 +2795,11 @@ $('fileInput').onchange = (e) => { importFiles(e.target.files); e.target.value =
 $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
-$('compBtn').onclick = editAction;
-$('destBtn').onclick = () => setDestPoint();
-$('srcBtn').onclick = setSourcePoint;
+$('compBtn').onclick = (e) => editAction(e.altKey);
+$('destBtn').onclick = (e) => setDestPoint(S.playhead, e.shiftKey);
+$('destOutBtn').onclick = () => setDestPoint(S.playhead, true);
+$('srcBtn').onclick = (e) => setSourcePoint(e.shiftKey);
+$('srcOutBtn').onclick = () => setSourcePoint(true);
 $('alignHereBtn').onclick = () => alignTakesHere();
 $('alignBtn').onclick = openAlign;
 $('markBtn').onclick = () => addMarker();
@@ -2682,6 +2820,8 @@ $('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.val
 
 document.addEventListener('keydown', (e) => {
   const k = e.key, mod = e.ctrlKey || e.metaKey;
+  // ⌥E geeft op een Mac een accentteken; herken de toets daarom aan zijn plek
+  if (e.code === 'KeyE' && e.altKey && !mod && !e.target.matches('input, select, textarea')) { e.preventDefault(); editAction(true); return; }
   // ⌘Z / Ctrl+Z werkt overal, ook als de cursor nog in een getalveld staat (alleen in een tekstveld niet).
   if (mod && k.toLowerCase() === 'z' && !e.target.matches('input[type=text], textarea')) {
     e.preventDefault(); if (e.target.blur) e.target.blur(); e.shiftKey ? redo() : undo(); return;
@@ -2697,9 +2837,9 @@ document.addEventListener('keydown', (e) => {
   const sj = S.sel && S.sel.kind === 'junction' ? junctionOf(S.sel.a, S.sel.b) : null;
   switch (k) {
     case 's': case 'S': splitAt(S.playhead); break;
-    case 'e': case 'E': editAction(); break;
-    case 'd': case 'D': setDestPoint(); break;
-    case 'b': case 'B': setSourcePoint(); break;
+    case 'e': case 'E': editAction(e.altKey); break;
+    case 'd': case 'D': setDestPoint(S.playhead, e.shiftKey); break;
+    case 'b': case 'B': setSourcePoint(e.shiftKey); break;
     case 'h': case 'H': alignTakesHere(); break;
     case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
     case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(e.altKey); break;
@@ -2940,7 +3080,7 @@ async function importProjectFile(file) {
 function resetWorkspace() {
   stop();
   S.takes = []; S.clips = []; S.markers = []; S.undo = []; S.redo = [];
-  S.pts = { dest: null, src: null };
+  S.pts = { dest: null, destOut: null, src: null, srcOut: null };
   S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0;
   updateProjectLine(); setSaveState('wordt automatisch bewaard');
   buildHeads(); S.loading = true; afterEdit(); S.loading = false;
@@ -2974,7 +3114,7 @@ async function loadProject(id) {
     S.takes = takes;
     S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
     S.markers = rec.markers || [];
-    S.pts = { dest: null, src: null };
+    S.pts = { dest: null, destOut: null, src: null, srcOut: null };
     S.nextId = Math.max(rec.nextId || 1, ...takes.map((t) => t.id + 1), ...S.clips.map((c) => c.id + 1));
     S.project = { id: rec.id, name: rec.name, created: rec.created };
     S.undo = []; S.redo = []; S.sel = null; S.range = null;
