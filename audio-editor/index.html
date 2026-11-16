@@ -174,6 +174,7 @@ kbd {
     <button id="zoomIn" title="Inzoomen (+)">+</button>
     <button id="zoomFit" title="Alles in beeld (F)">Passend</button>
     <label title="Klikken aan clipranden en afspeelkop (Shift tijdens slepen schakelt tijdelijk uit)"><input type="checkbox" id="snapChk" checked> Snap</label>
+    <label title="Knippen (S) en weghalen schuiven het knippunt tot max. 5 ms op naar de dichtstbijzijnde nuldoorgang: geen tikjes"><input type="checkbox" id="zcChk" checked> Nuldoorgang</label>
     <label title="Lengte van nieuwe crossfades bij 'Naar edit' en bij het wisselen van take">Std. crossfade <input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</label>
     <span class="sep"></span>
     <select id="bitDepth" aria-label="Exportformaat">
@@ -235,7 +236,7 @@ const S = {
   sel: null, range: null,
   playing: null,
   undo: [], redo: [],
-  snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true, returnToStart: true,
+  zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
   meter: 0,
@@ -498,12 +499,34 @@ function replaceRange(take, t0, t1) {
   });
 }
 
+/**
+ * Dichtstbijzijnde nuldoorgang (binnen ±maxDev s) in de bron van clip c rond tijdlijn-tijd t.
+ * Een knip op een nuldoorgang geeft geen tik, ook zonder (of met een heel korte) fade.
+ */
+function zeroCrossAt(c, t, maxDev = 0.005) {
+  if (!S.zeroCross || !c) return t;
+  const take = takeOf(c.takeId), d = take.data, sr = take.buffer.sampleRate, n = d[0].length;
+  const mono = (k) => { let v = 0; for (const ch of d) v += ch[k]; return v; };
+  const s0 = Math.round((t - c.start + c.offset) * sr), dev = Math.round(maxDev * sr);
+  for (let k = 0; k <= dev; k++) {
+    for (const i of [s0 - k, s0 + k]) {
+      if (i <= 0 || i >= n) continue;
+      const a = mono(i - 1), b = mono(i);
+      if ((a <= 0 && b > 0) || (a >= 0 && b < 0) || b === 0) {
+        const nt = c.start + (i / sr - c.offset);
+        if (nt > c.start + MIN_DUR && nt < end(c) - MIN_DUR) return nt;
+      }
+    }
+  }
+  return t;
+}
+const clipAt = (t) => [...S.clips].reverse().find((x) => x.start + MIN_DUR < t && t < end(x) - MIN_DUR);
+
 function splitAt(t) {
   let c = S.sel && S.sel.kind === 'clip' ? clipOf(S.sel.id) : null;
-  if (!c || !(c.start + MIN_DUR < t && t < end(c) - MIN_DUR)) {
-    c = [...S.clips].reverse().find((x) => x.start + MIN_DUR < t && t < end(x) - MIN_DUR);
-  }
+  if (!c || !(c.start + MIN_DUR < t && t < end(c) - MIN_DUR)) c = clipAt(t);
   if (!c) { toast('Geen clip onder de afspeelkop'); return; }
+  t = zeroCrossAt(c, t);
   mutate(() => {
     const k = t - c.start;
     const n = { ...c, id: newId(), start: t, offset: c.offset + k, dur: c.dur - k, fadeIn: 0.005, xShape: 'eqp' };
@@ -567,6 +590,7 @@ function gapAt(t) {
  */
 function deleteRange(t0, t1, ripple = true) {
   if (t1 - t0 < 0.005) return;
+  t0 = zeroCrossAt(clipAt(t0), t0); t1 = zeroCrossAt(clipAt(t1), t1);
   const d = ripple ? t1 - t0 : 0;
   mutate(() => {
     const out = [];
@@ -880,6 +904,31 @@ function encodeWav(buf, bits) {
 }
 
 /* ---------- uitlijnen ---------- */
+/**
+ * Meet het niveau (RMS, dBFS) van clip c over [t0,t1] op de tijdlijn, inclusief bronmateriaal
+ * buiten de clip (zo meet je bij een crossfade A en B over hetzelfde stuk muziek), zonder clipgain.
+ */
+function levelOf(c, t0, t1) {
+  const take = takeOf(c.takeId), d = take.data, sr = take.buffer.sampleRate, n = d[0].length;
+  const a = Math.max(0, Math.round((t0 - c.start + c.offset) * sr)), b = Math.min(n, Math.round((t1 - c.start + c.offset) * sr));
+  if (b - a < sr * 0.05) return null;
+  let sum = 0, cnt = 0;
+  for (let k = a; k < b; k++) { let v = 0; for (const ch of d) v += ch[k]; v /= d.length; sum += v * v; cnt++; }
+  const rms = Math.sqrt(sum / cnt);
+  return rms > 1e-6 ? 20 * Math.log10(rms) : null;
+}
+
+/** Zet de gain van B zo dat B rond de crossfade even luid is als A. */
+function matchLevel(j, win = 1.5) {
+  const c = (j.s + j.e) / 2;
+  const la = levelOf(j.a, c - win, c + win), lb = levelOf(j.b, c - win, c + win);
+  if (la == null || lb == null) { toast('Te weinig geluid rond de overgang om te meten'); return; }
+  const target = clamp((j.a.gain || 0) + (la - lb), -24, 24);
+  const delta = target - (j.b.gain || 0);
+  mutate(() => { j.b.gain = Math.round(target * 10) / 10; });
+  toast(`Gemeten rond de knip: A ${la.toFixed(1)} dB, B ${lb.toFixed(1)} dB → gain van B ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} dB (nu ${j.b.gain > 0 ? '+' : ''}${j.b.gain.toFixed(1)} dB)`);
+}
+
 /** Verschuif de inhoud van B (slip) zodat de golfvormen in de crossfade zo goed mogelijk in fase lopen. */
 function phaseAlign(j) {
   const a = j.a, b = j.b, ta = takeOf(a.takeId), tb = takeOf(b.takeId);
@@ -1441,6 +1490,7 @@ function inspectJunction(el, j) {
       <span class="group">Knip <button data-roll="-10">−10</button><button data-roll="-1">−1</button><button data-roll="1">+1</button><button data-roll="10">+10</button> ms</span>
       <button id="xfAlign" title="Verschuift de inhoud van B een paar ms zodat de golfvormen in fase lopen — voorkomt holle of kamfilter-achtige overgangen">Fase uitlijnen</button>
       <button id="xfDetail" title="Beide kanten groot onder en over elkaar, met zoom tot op de sample">Uitlijnen in detail…</button>
+      <button id="xfLevel" title="Meet het niveau van A en B over 3 s rond de knip en past de gain van clip B aan, zodat er geen volumesprong is">Volume gelijk maken</button>
     </div>
     <div class="row">
       <button id="xfPlay" class="primary">${S.playing && S.playing.loop ? '■ Stop' : '▶ Beluister'} <kbd>A</kbd></button>
@@ -1467,6 +1517,7 @@ function inspectJunction(el, j) {
   el.querySelectorAll('[data-roll]').forEach((b) => { b.onclick = () => mutate(() => roll(j.a, j.b, +b.dataset.roll / 1000)); });
   $('xfAlign').onclick = () => phaseAlign(j);
   $('xfDetail').onclick = openAlign;
+  $('xfLevel').onclick = () => matchLevel(j);
   $('xfPlay').onclick = () => { if (S.playing) { stop(); renderInspector(); } else { auditionJunction(); renderInspector(); } };
   $('xfLoop').onchange = (e) => { S.loopAudition = e.target.checked; };
   $('preroll').onchange = (e) => { S.preroll = clamp(+e.target.value || 2, 0.2, 20); saveSettings(); };
@@ -1521,6 +1572,7 @@ function inspectClip(el, c) {
     <div class="row">
       <button id="clSplit">Knip op afspeelkop <kbd>S</kbd></button>
       <button id="clGap" title="Schuift deze clip en alles erna naar links, tot tegen de vorige clip of 0:00">Gat ervoor dichten</button>
+      ${junctions().some((j) => j.b === c) ? '<button id="clLevel" title="Past de gain van deze clip aan zodat hij rond de overgang even luid is als de clip ervoor">Volume gelijk aan vorige clip</button>' : ''}
       <button id="clPlay">▶ Speel vanaf clip</button>
       <button id="clDel" class="danger">Verwijder clip</button>
       <span class="hint">Wissel van take om dit stuk door dezelfde plek uit een andere take te vervangen (met crossfades). Alt+slepen verschuift de inhoud binnen de clip.</span>
@@ -1537,6 +1589,7 @@ function inspectClip(el, c) {
   $('clFo').onchange = (e) => mutate(() => { c.fadeOut = Math.max(0, +e.target.value || 0) / 1000; });
   $('clSplit').onclick = () => splitAt(S.playhead);
   $('clGap').onclick = () => closeGapBefore(c);
+  if ($('clLevel')) $('clLevel').onclick = () => matchLevel(junctions().find((j) => j.b === c));
   $('clPlay').onclick = () => play(c.start);
   $('clDel').onclick = () => deleteSelection();
 }
@@ -2181,6 +2234,7 @@ $('zoomOut').onclick = () => zoomAt(cssW / 2, 1 / 1.5);
 $('zoomFit').onclick = zoomFit;
 $('snapChk').onchange = (e) => { S.snap = e.target.checked; saveSettings(); };
 $('rtsChk').onchange = (e) => { S.returnToStart = e.target.checked; saveSettings(); };
+$('zcChk').onchange = (e) => { S.zeroCross = e.target.checked; saveSettings(); };
 $('bitDepth').onchange = saveSettings;
 $('projBtn').onclick = openProjects;
 $('projName').onclick = openProjects;
@@ -2484,12 +2538,13 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ snap: S.snap, defXf: S.defXf, rts: S.returnToStart, syncClips: S.syncClips, preroll: S.preroll, bits: $('bitDepth').value }));
+  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, syncClips: S.syncClips, preroll: S.preroll, bits: $('bitDepth').value }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
   if (!o) return;
   if (typeof o.snap === 'boolean') S.snap = o.snap;
+  if (typeof o.zc === 'boolean') S.zeroCross = o.zc;
   if (typeof o.defXf === 'number') S.defXf = o.defXf;
   if (typeof o.rts === 'boolean') S.returnToStart = o.rts;
   if (typeof o.syncClips === 'boolean') S.syncClips = o.syncClips;
@@ -2497,7 +2552,7 @@ function loadSettings() {
   if (o.bits) $('bitDepth').value = o.bits;
 }
 function applySettingsUI() {
-  $('snapChk').checked = S.snap; $('defXf').value = ms(S.defXf); $('rtsChk').checked = S.returnToStart;
+  $('snapChk').checked = S.snap; $('zcChk').checked = S.zeroCross; $('defXf').value = ms(S.defXf); $('rtsChk').checked = S.returnToStart;
 }
 
 /* ---------- app: offline + installeren ---------- */
