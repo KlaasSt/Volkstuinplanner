@@ -156,7 +156,8 @@ kbd {
   <div class="tools">
     <button id="projBtn" title="Bewaarde projecten openen, een nieuw project beginnen">Projecten</button>
     <button id="importBtn" class="primary">Importeer takes</button>
-    <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus" hidden>
+    <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus,.crossfader" hidden>
+    <input type="file" id="projFileInput" accept=".crossfader,application/octet-stream" hidden>
     <button id="demoBtn" title="Genereer drie voorbeeld-takes om mee te oefenen">Demo</button>
     <span class="sep"></span>
     <button id="playBtn" title="Afspelen / stoppen (spatie)">▶</button>
@@ -178,12 +179,7 @@ kbd {
     <label title="Knippen (S) en weghalen schuiven het knippunt tot max. 5 ms op naar de dichtstbijzijnde nuldoorgang: geen tikjes"><input type="checkbox" id="zcChk" checked> Nuldoorgang</label>
     <label title="Lengte van nieuwe crossfades bij 'Naar edit' en bij het wisselen van take">Std. crossfade <input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</label>
     <span class="sep"></span>
-    <select id="bitDepth" aria-label="Exportformaat">
-      <option value="16">WAV 16-bit</option>
-      <option value="24" selected>WAV 24-bit</option>
-      <option value="32">WAV 32-bit float</option>
-    </select>
-    <button id="exportBtn">Exporteer</button>
+    <button id="exportBtn" title="Edit (of selectie) exporteren als WAV of MP3">Exporteer…</button>
     <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
   </div>
 </header>
@@ -237,7 +233,7 @@ const S = {
   sel: null, range: null,
   playing: null,
   undo: [], redo: [],
-  markers: [],
+  markers: [], exportFmt: 'wav24', normalize: false, normDb: -1,
   zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
@@ -331,6 +327,8 @@ function decodeAudio(ac, ab) {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
 async function importFiles(files) {
+  const proj = [...files].find((f) => /\.crossfader$/i.test(f.name));
+  if (proj) { importProjectFile(proj); return; }
   const list = [...files].filter((f) => /^audio\//.test(f.type) || /\.(wav|aiff?|flac|mp3|m4a|aac|ogg|oga|opus|webm|caf)$/i.test(f.name));
   if (!list.length) { toast('Geen audiobestanden gevonden'); return; }
   const ac = ensureAC();
@@ -852,37 +850,119 @@ function renderMono(t0, t1, sr) {
   return out;
 }
 
-async function exportWav() {
+const EXPORT_FORMATS = {
+  wav16: { label: 'WAV 16-bit (cd-kwaliteit)', ext: 'wav', bits: 16 },
+  wav24: { label: 'WAV 24-bit (studio, aanbevolen)', ext: 'wav', bits: 24 },
+  wav32: { label: 'WAV 32-bit float (geen clipping mogelijk)', ext: 'wav', bits: 32 },
+  mp3_320: { label: 'MP3 320 kbps (delen, hoge kwaliteit)', ext: 'mp3', kbps: 320 },
+  mp3_192: { label: 'MP3 192 kbps (delen, kleiner bestand)', ext: 'mp3', kbps: 192 },
+};
+const LAME_URL = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js';
+let lamePromise = null;
+function loadLame() {
+  if (window.lamejs) return Promise.resolve(window.lamejs);
+  if (!lamePromise) {
+    lamePromise = new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = LAME_URL; sc.async = true; sc.crossOrigin = 'anonymous';
+      sc.onload = () => (window.lamejs ? res(window.lamejs) : rej(new Error('MP3-encoder niet beschikbaar')));
+      sc.onerror = () => rej(new Error('De MP3-encoder kon niet worden geladen. Is er internet? (Na één keer werkt het ook offline.)'));
+      document.head.appendChild(sc);
+    });
+    lamePromise.catch(() => { lamePromise = null; });
+  }
+  return lamePromise;
+}
+
+async function encodeMp3(buf, kbps) {
+  const lame = await loadLame();
+  const nch = Math.min(2, buf.numberOfChannels), sr = buf.sampleRate;
+  const enc = new lame.Mp3Encoder(nch, sr, kbps);
+  const chs = []; for (let c = 0; c < nch; c++) chs.push(buf.getChannelData(c));
+  const BLOCK = 1152 * 20, parts = [];
+  const toI16 = (f, a, n) => { const o = new Int16Array(n); for (let i = 0; i < n; i++) { const v = clamp(f[a + i], -1, 1); o[i] = v < 0 ? v * 32768 : v * 32767; } return o; };
+  for (let a = 0; a < buf.length; a += BLOCK) {
+    const n = Math.min(BLOCK, buf.length - a);
+    const L = toI16(chs[0], a, n), R = nch > 1 ? toI16(chs[1], a, n) : null;
+    const out = R ? enc.encodeBuffer(L, R) : enc.encodeBuffer(L);
+    if (out.length) parts.push(new Uint8Array(out));
+    if ((a / BLOCK) % 20 === 0) { busy(true, `MP3 maken… ${Math.round((a / buf.length) * 100)}%`); await new Promise((r) => setTimeout(r)); }
+  }
+  const fin = enc.flush(); if (fin.length) parts.push(new Uint8Array(fin));
+  return new Blob(parts, { type: 'audio/mpeg' });
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+/** Bestandsnaam die elke browser accepteert: accenten weg (é → e), alleen letters, cijfers, spatie en - _ ( ) . , */
+const safeName = (n) => (n || 'edit').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _().,-]+/g, '-').replace(/-+/g, '-').replace(/\s+/g, ' ').replace(/^[-. ]+|[-. ]+$/g, '').slice(0, 80) || 'edit';
+
+/** Render [a,b] van de edit en sla op als WAV of MP3, eventueel genormaliseerd. */
+async function exportAudio(a = 0, b = editEnd(), suffix = '') {
   if (!S.clips.length) { toast('De edit is leeg'); return; }
+  const fmtDef = EXPORT_FORMATS[S.exportFmt] || EXPORT_FORMATS.wav24;
   const ac = ensureAC();
-  const sr = ac.sampleRate, len = editEnd();
+  const sr = ac.sampleRate, len = b - a;
+  if (len <= 0.01) { toast('Niets om te exporteren'); return; }
   const used = new Set(S.clips.map((c) => c.takeId));
   const nch = Math.max(1, ...S.takes.filter((t) => used.has(t.id)).map((t) => t.buffer.numberOfChannels));
-  const bits = +$('bitDepth').value;
   busy(true, 'Exporteren…');
   try {
+    if (fmtDef.ext === 'mp3') { busy(true, 'MP3-encoder laden…'); await loadLame(); busy(true, 'Exporteren…'); }
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const oac = new OAC(Math.min(nch, 2), Math.max(1, Math.ceil(len * sr)), sr);
-    scheduleGraph(oac, oac.destination, 0, len, 0);
+    scheduleGraph(oac, oac.destination, a, b, 0);
     const buf = await oac.startRendering();
-    let peak = 0;
-    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-      const d = buf.getChannelData(ch);
-      for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; }
+    const peakOf = () => {
+      let pk = 0;
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > pk) pk = v; } }
+      return pk;
+    };
+    let peak = peakOf(), normInfo = '';
+    if (S.normalize && peak > 1e-6) {
+      const g = dbLin(S.normDb) / peak;
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] *= g; }
+      normInfo = ` · genormaliseerd (${g >= 1 ? '+' : ''}${(20 * Math.log10(g)).toFixed(1)} dB)`;
+      peak = peakOf();
     }
-    const blob = encodeWav(buf, bits);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'edit.wav';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    const blob = fmtDef.ext === 'mp3' ? await encodeMp3(buf, fmtDef.kbps) : encodeWav(buf, fmtDef.bits);
+    const name = safeName(S.project ? S.project.name : 'edit') + suffix + '.' + fmtDef.ext;
+    download(blob, name);
     const pdb = peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞';
-    toast(peak > 1 && bits !== 32
-      ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Verlaag de gain.`
-      : `Geëxporteerd: ${fmt(len)} · ${sr} Hz · ${bits}-bit · piek ${pdb} dBFS`);
+    const mb = (blob.size / 1048576).toFixed(1);
+    toast(peak > 1 && fmtDef.bits !== 32
+      ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Zet normaliseren aan of verlaag de gain.`
+      : `"${name}" geëxporteerd: ${fmt(len)} · ${mb} MB · piek ${pdb} dBFS${normInfo}`);
   } catch (err) {
-    console.error(err); toast('Export mislukt: ' + err.message);
+    console.error(err); toast('Export mislukt: ' + (err.message || err));
   } finally { busy(false); }
+}
+
+function inspectExport(el) {
+  const sel = S.sel && S.sel.kind === 'export' ? S.sel : {};
+  const r = S.lastRange;
+  el.innerHTML = `
+    <div class="insp-head"><h2>Exporteren</h2><span>${S.project ? esc(S.project.name) : 'edit'} · ${fmt(editEnd(), 1)}</span></div>
+    <div class="row">
+      <label>Formaat <select id="exFmt">${Object.entries(EXPORT_FORMATS).map(([k, v]) => `<option value="${k}"${k === S.exportFmt ? ' selected' : ''}>${v.label}</option>`).join('')}</select></label>
+      <label title="Zet de luidste piek op dit niveau. −1 dBFS laat wat ruimte voor MP3/streaming."><input type="checkbox" id="exNorm"${S.normalize ? ' checked' : ''}> Normaliseren naar</label>
+      <label><input type="number" id="exNormDb" value="${S.normDb}" step="0.5" min="-24" max="0" style="width:64px"> dBFS</label>
+    </div>
+    <div class="row">
+      <button id="exAll" class="primary">Hele edit exporteren</button>
+      ${r ? `<button id="exSel">Alleen selectie ${fmt(r[0], 1)} – ${fmt(r[1], 1)}</button>` : ''}
+      <span class="hint">WAV voor verdere bewerking of mastering; MP3 om te delen. ${S.exportFmt.startsWith('mp3') ? 'De MP3-encoder wordt de eerste keer van internet geladen; daarna werkt het ook offline.' : ''}</span>
+    </div>`;
+  $('exFmt').onchange = (e) => { S.exportFmt = e.target.value; saveSettings(); renderInspector(); };
+  $('exNorm').onchange = (e) => { S.normalize = e.target.checked; saveSettings(); };
+  $('exNormDb').onchange = (e) => { S.normDb = clamp(+e.target.value || -1, -24, 0); saveSettings(); };
+  $('exAll').onclick = () => exportAudio(0, editEnd());
+  if (r) $('exSel').onclick = () => exportAudio(r[0], r[1], ' (selectie)');
 }
 
 function encodeWav(buf, bits) {
@@ -1406,6 +1486,10 @@ $('heads').addEventListener('click', (e) => {
 });
 
 function select(sel) {
+  if (sel && sel.kind === 'export') {
+    const o = S.sel;
+    S.lastRange = o && o.kind === 'erange' ? [Math.min(o.t0, o.t1), Math.max(o.t0, o.t1)] : null;
+  }
   S.sel = sel;
   if (!(sel && sel.kind === 'take' && S.range && S.range.takeId === sel.id)) S.range = null;
   S.xfView = null;
@@ -1434,6 +1518,7 @@ function renderInspector() {
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
   if (s && s.kind === 'projects') { inspectProjects(el); return; }
+  if (s && s.kind === 'export') return inspectExport(el);
   if (s && s.kind === 'marker') { const mk = S.markers.find((m) => m.id === s.id); if (mk) return inspectMarker(el, mk); }
   if (s && s.kind === 'align') return inspectAlign(el, s);
   if (s && s.kind === 'erange') {
@@ -2344,11 +2429,11 @@ $('zoomFit').onclick = zoomFit;
 $('snapChk').onchange = (e) => { S.snap = e.target.checked; saveSettings(); };
 $('rtsChk').onchange = (e) => { S.returnToStart = e.target.checked; saveSettings(); };
 $('zcChk').onchange = (e) => { S.zeroCross = e.target.checked; saveSettings(); };
-$('bitDepth').onchange = saveSettings;
 $('projBtn').onclick = openProjects;
 $('projName').onclick = openProjects;
 $('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 1000; saveSettings(); };
-$('exportBtn').onclick = exportWav;
+$('exportBtn').onclick = () => select({ kind: 'export' });
+$('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importProjectFile(f); };
 
 document.addEventListener('keydown', (e) => {
   const k = e.key, mod = e.ctrlKey || e.metaKey;
@@ -2493,7 +2578,7 @@ function updateProjectLine() {
 function suggestName() {
   const d = new Date();
   const base = S.takes[0] ? S.takes[0].name.replace(/[ _-]*(take)?[ _-]*\d+$/i, '').trim() : '';
-  return (base || 'Project') + ' · ' + d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  return (base || 'Project') + ' - ' + d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
 
 let saveTimer = null, saving = null;
@@ -2547,6 +2632,61 @@ async function cleanupFiles() {
   const used = new Set(S.takes.map((t) => t.fileKey));
   for (const p of projects) for (const t of p.takes) used.add(t.fileKey);
   for (const k of await dbKeys('files')) if (!used.has(k)) await dbDel('files', k);
+}
+
+/* ---------- project als bestand ----------
+   Eén bestand (.crossfader) met de edit én de audio: als back-up of om op een andere computer verder te werken.
+   Opbouw: "TCFPROJ1" · uint32 lengte · JSON-kop · de audiobestanden achter elkaar. */
+const PROJ_MAGIC = 'TCFPROJ1';
+async function exportProjectFile() {
+  if (!S.takes.length) { toast('Er is nog geen project om te bewaren'); return; }
+  busy(true, 'Projectbestand maken…');
+  try {
+    await saveProject();
+    const rec = await dbGet('projects', S.project.id);
+    const files = [], blobs = [];
+    for (const t of rec.takes) {
+      const b = await dbGet('files', t.fileKey);
+      if (!b) throw new Error(`audio van "${t.name}" ontbreekt`);
+      files.push({ key: t.fileKey, size: b.size, type: b.type || 'application/octet-stream' });
+      blobs.push(b);
+    }
+    const head = new TextEncoder().encode(JSON.stringify({ format: 1, app: 'Take Crossfader', project: rec, files }));
+    const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, head.length, true);
+    const blob = new Blob([PROJ_MAGIC, len, head, ...blobs], { type: 'application/octet-stream' });
+    download(blob, safeName(rec.name) + '.crossfader');
+    toast(`Projectbestand gemaakt (${(blob.size / 1048576).toFixed(1)} MB). Bewaar het bijvoorbeeld in iCloud Drive of op een USB-stick.`);
+  } catch (err) {
+    console.error(err); toast('Projectbestand maken mislukt: ' + (err.message || err));
+  } finally { busy(false); }
+}
+
+async function importProjectFile(file) {
+  busy(true, `"${file.name}" openen…`);
+  try {
+    const first = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    if (new TextDecoder().decode(first.slice(0, 8)) !== PROJ_MAGIC) throw new Error('dit is geen Take Crossfader-projectbestand');
+    const hl = new DataView(first.buffer).getUint32(8, true);
+    const head = JSON.parse(new TextDecoder().decode(await file.slice(12, 12 + hl).arrayBuffer()));
+    const rec = head.project, keyMap = {};
+    let off = 12 + hl;
+    for (const f of head.files) {
+      const nk = uid();
+      busy(true, `Audio overnemen… (${Object.keys(keyMap).length + 1}/${head.files.length})`);
+      await dbPut('files', file.slice(off, off + f.size, f.type), nk);
+      keyMap[f.key] = nk; off += f.size;
+    }
+    const existing = await dbAll('projects');
+    rec.id = uid();
+    rec.takes = rec.takes.map((t) => ({ ...t, fileKey: keyMap[t.fileKey] }));
+    if (existing.some((p) => p.name === rec.name)) rec.name += ' (geïmporteerd)';
+    rec.updated = Date.now();
+    await dbPut('projects', rec);
+    busy(false);
+    await loadProject(rec.id);
+  } catch (err) {
+    console.error(err); busy(false); toast('Projectbestand openen mislukt: ' + (err.message || err));
+  }
 }
 
 function resetWorkspace() {
@@ -2617,6 +2757,8 @@ async function inspectProjects(el) {
       <button id="pjSaveNow">Nu bewaren</button>
     </div>` : `<p class="hint">Het huidige werk wordt een project zodra je takes importeert.</p>`}
     <div class="row"><button id="pjNew" class="primary">Nieuw project</button>
+      ${S.project ? '<button id="pjExport" title="Eén bestand met de edit en alle audio, als back-up of om op een andere computer verder te werken">Project als bestand bewaren…</button>' : ''}
+      <button id="pjImport" title="Een .crossfader-bestand openen (wordt als nieuw project toegevoegd)">Projectbestand openen…</button>
       ${est && est.quota ? `<span class="hint">Opslag in gebruik: ${mb(est.usage || 0)} van ${mb(est.quota)}</span>` : ''}</div>
     <div class="plist">${list.length ? list.map((p) => `
       <div class="pitem${p.id === cur ? ' cur' : ''}">
@@ -2630,6 +2772,8 @@ async function inspectProjects(el) {
     $('pjSaveNow').onclick = () => saveProject().then(() => renderInspector());
   }
   $('pjNew').onclick = () => newProject();
+  if ($('pjExport')) $('pjExport').onclick = exportProjectFile;
+  $('pjImport').onclick = () => $('projFileInput').click();
   el.querySelectorAll('[data-open]').forEach((b) => {
     b.onclick = () => loadProject(b.dataset.open).catch((err) => { busy(false); toast('Openen mislukt: ' + (err.message || err)); });
   });
@@ -2652,7 +2796,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, syncClips: S.syncClips, preroll: S.preroll, bits: $('bitDepth').value }));
+  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, syncClips: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -2663,7 +2807,9 @@ function loadSettings() {
   if (typeof o.rts === 'boolean') S.returnToStart = o.rts;
   if (typeof o.syncClips === 'boolean') S.syncClips = o.syncClips;
   if (typeof o.preroll === 'number') S.preroll = o.preroll;
-  if (o.bits) $('bitDepth').value = o.bits;
+  if (o.fmt) S.exportFmt = o.fmt;
+  if (typeof o.norm === 'boolean') S.normalize = o.norm;
+  if (typeof o.normDb === 'number') S.normDb = o.normDb;
 }
 function applySettingsUI() {
   $('snapChk').checked = S.snap; $('zcChk').checked = S.zeroCross; $('defXf').value = ms(S.defXf); $('rtsChk').checked = S.returnToStart;
