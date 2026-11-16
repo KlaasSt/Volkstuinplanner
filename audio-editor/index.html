@@ -1,0 +1,1694 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Crossfader">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Take Crossfader</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root {
+  --bg: #0f1115;
+  --panel: #171a20;
+  --panel2: #1d2128;
+  --lane: #14171c;
+  --line: #2a2f38;
+  --text: #e6e8ec;
+  --muted: #8b93a1;
+  --accent: #4f9dff;
+  --accent2: #ff9f43;
+  --danger: #ff5c6c;
+  --playhead: #ff5c6c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column;
+  -webkit-user-select: none; user-select: none;
+}
+button, select, input { font: inherit; color: inherit; }
+button {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 10px; cursor: pointer; white-space: nowrap;
+}
+button:hover:not(:disabled) { border-color: #3d4452; background: #242934; }
+button:disabled { opacity: .4; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { background: #3b8af0; }
+button.danger { color: var(--danger); }
+select, input[type=number], input[type=text] {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px;
+}
+input[type=number] { width: 72px; }
+input[type=range] { accent-color: var(--accent); }
+label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+
+header.bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+#installBtn[hidden] { display: none; }
+.brand { display: flex; flex-direction: column; margin-right: 8px; }
+.brand strong { font-size: 15px; }
+.brand span { color: var(--muted); font-size: 11px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+.clock {
+  font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #0b0d10; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; min-width: 104px; text-align: center;
+}
+#playBtn { min-width: 40px; }
+#playBtn.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.timeline {
+  display: flex; overflow-y: auto; overflow-x: hidden; max-height: 58vh; min-height: 200px;
+  border-bottom: 1px solid var(--line); background: var(--lane);
+}
+.heads { flex: none; width: 150px; background: var(--panel); border-right: 1px solid var(--line); }
+.head {
+  border-bottom: 1px solid var(--line); padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;
+  justify-content: center; cursor: pointer; overflow: hidden;
+}
+.head.ruler { cursor: default; color: var(--muted); font-size: 11px; padding: 0 8px; }
+.head.edit { cursor: default; }
+.head.edit strong { letter-spacing: .08em; }
+.head .name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.head .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.head .meta { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+.head button { padding: 1px 7px; font-size: 11px; }
+.head.sel { background: #222833; }
+.head.placeholder { color: var(--muted); font-size: 11px; cursor: default; }
+#meter { width: 100%; height: 6px; background: #0b0d10; border-radius: 3px; display: block; }
+.canvas-wrap { flex: 1; min-width: 0; position: relative; }
+#tl { display: block; touch-action: none; }
+.scrollrow { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 158px; background: var(--panel); border-bottom: 1px solid var(--line); }
+#hscroll { flex: 1; }
+
+.inspector { flex: 1; overflow: auto; padding: 14px 16px 24px; background: var(--bg); min-height: 180px; }
+.insp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.insp-head h2 { margin: 0; font-size: 15px; }
+.insp-head span { color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 10px 0; }
+.group { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.group button { padding: 3px 8px; }
+.hint { color: var(--muted); font-size: 12px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; color: var(--muted); }
+.kv b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+#xfCanvas { width: 100%; height: 240px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: col-resize; }
+.help { max-width: 860px; color: var(--muted); }
+.help h2 { color: var(--text); font-size: 15px; margin: 0 0 8px; }
+.help ol { padding-left: 20px; margin: 6px 0 14px; }
+.help li { margin: 4px 0; }
+.help b { color: var(--text); }
+kbd {
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--panel2);
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--text);
+}
+.keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 18px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px);
+  background: #262b35; border: 1px solid #3a4150; padding: 8px 14px; border-radius: 8px;
+  opacity: 0; transition: .2s; pointer-events: none; z-index: 20; max-width: calc(100vw - 32px);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#drop {
+  position: fixed; inset: 0; background: rgba(79,157,255,.15); border: 3px dashed var(--accent);
+  display: none; align-items: center; justify-content: center; font-size: 20px; z-index: 30; pointer-events: none;
+}
+#drop.show { display: flex; }
+#busy { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 40; font-size: 15px; }
+#busy.show { display: flex; }
+
+@media (max-width: 640px) {
+  header.bar { padding: 8px 16px; }
+  .heads { width: 110px; }
+  .scrollrow { padding-left: 118px; }
+  .brand span { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><strong>Take Crossfader</strong><span>audio-editor voor crossfades tussen takes</span></div>
+  <div class="tools">
+    <button id="importBtn" class="primary">Importeer takes</button>
+    <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus" hidden>
+    <button id="demoBtn" title="Genereer drie voorbeeld-takes om mee te oefenen">Demo</button>
+    <span class="sep"></span>
+    <button id="playBtn" title="Afspelen / stoppen (spatie)">▶</button>
+    <span id="clock" class="clock">0:00.000</span>
+    <span class="sep"></span>
+    <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
+    <button id="compBtn" title="Geselecteerd stuk uit een take in de edit plaatsen (E)">Naar edit</button>
+    <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
+    <button id="undoBtn" title="Ongedaan maken (Ctrl/⌘+Z)">↶</button>
+    <button id="redoBtn" title="Opnieuw (Ctrl/⌘+Shift+Z)">↷</button>
+    <span class="sep"></span>
+    <button id="zoomOut" title="Uitzoomen (−)">−</button>
+    <button id="zoomIn" title="Inzoomen (+)">+</button>
+    <button id="zoomFit" title="Alles in beeld (F)">Passend</button>
+    <label title="Klikken aan clipranden en afspeelkop (Shift tijdens slepen schakelt tijdelijk uit)"><input type="checkbox" id="snapChk" checked> Snap</label>
+    <label title="Lengte van nieuwe crossfades bij 'Naar edit' en bij het wisselen van take">Std. crossfade <input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</label>
+    <span class="sep"></span>
+    <select id="bitDepth" aria-label="Exportformaat">
+      <option value="16">WAV 16-bit</option>
+      <option value="24" selected>WAV 24-bit</option>
+      <option value="32">WAV 32-bit float</option>
+    </select>
+    <button id="exportBtn">Exporteer</button>
+    <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
+  </div>
+</header>
+
+<main>
+  <div class="timeline" id="timeline">
+    <div class="heads" id="heads"></div>
+    <div class="canvas-wrap" id="canvasWrap"><canvas id="tl"></canvas></div>
+  </div>
+  <div class="scrollrow"><input type="range" id="hscroll" min="0" max="1" step="0.001" value="0" aria-label="Horizontaal scrollen"></div>
+  <section class="inspector" id="inspector"></section>
+</main>
+
+<div id="toast"></div>
+<div id="drop">Laat los om audiobestanden te importeren</div>
+<div id="busy">Bezig…</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Take Crossfader — een kleine niet-destructieve audio-editor voor het
+   samenstellen van één edit uit meerdere takes, met crossfades.
+
+   Model
+   - take:  { id, name, buffer, data[], peaks, sync, color }
+            sync = positie (s) van het begin van de take op de tijdlijn.
+   - clip:  { id, takeId, start, offset, dur, gain, fadeIn, fadeOut, xShape }
+            start  = positie op de tijdlijn (s)
+            offset = positie in de bron (s)
+            xShape = vorm van de crossfade met de vorige clip
+   Twee opeenvolgende clips die overlappen vormen samen een crossfade
+   over het overlapgebied. Afspelen en exporteren gebruiken dezelfde
+   gain-envelope (envAt), zodat je hoort wat je exporteert.
+   ===================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const RULER = 26, EDIT_H = 150, TAKE_H = 76;
+const COLORS = ['#4f9dff', '#ff9f43', '#2ed573', '#e056fd', '#ffd32a', '#ff6b81', '#1dd1a1', '#a29bfe'];
+const PEAK_BLOCK = 256;
+const MIN_DUR = 0.005;
+const SHAPES = {
+  eqp: { name: 'Equal power (verschillende takes)', f: (x) => Math.sin(x * Math.PI / 2) },
+  lin: { name: 'Lineair / equal gain (zelfde materiaal)', f: (x) => x },
+  s:   { name: 'S-curve (zacht)', f: (x) => 0.5 - 0.5 * Math.cos(Math.PI * x) },
+};
+
+const S = {
+  ac: null, master: null, analyser: null,
+  takes: [], clips: [], nextId: 1,
+  pps: 60, view: 0, playhead: 0,
+  sel: null, range: null,
+  playing: null,
+  undo: [], redo: [],
+  snap: true, defXf: 0.04, preroll: 2, loopAudition: false,
+  drag: null, dirty: true, xfView: null,
+  meter: 0,
+};
+
+/* ---------- helpers ---------- */
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dbLin = (db) => Math.pow(10, db / 20);
+const end = (c) => c.start + c.dur;
+const takeOf = (id) => S.takes.find((t) => t.id === id);
+const clipOf = (id) => S.clips.find((c) => c.id === id);
+const newId = () => S.nextId++;
+const px = (t) => (t - S.view) * S.pps;
+const tAt = (x) => S.view + x / S.pps;
+const editEnd = () => S.clips.reduce((m, c) => Math.max(m, end(c)), 0);
+const contentEnd = () => Math.max(editEnd(), ...S.takes.map((t) => t.sync + t.buffer.duration), 1);
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function fmt(t, dec = 3) {
+  const neg = t < 0; t = Math.abs(t);
+  const m = Math.floor(t / 60), s = t - m * 60;
+  let ss = s.toFixed(dec);
+  if (s < 10) ss = '0' + ss;
+  return (neg ? '-' : '') + m + ':' + ss;
+}
+const ms = (s) => Math.round(s * 1000);
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+let toastTimer;
+function toast(msg) {
+  const el = $('toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+function busy(on, text = 'Bezig…') { $('busy').textContent = text; $('busy').classList.toggle('show', on); }
+
+function ensureAC() {
+  if (!S.ac) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    S.ac = new AC();
+    S.master = S.ac.createGain();
+    S.analyser = S.ac.createAnalyser();
+    S.analyser.fftSize = 1024;
+    S.master.connect(S.analyser);
+    S.analyser.connect(S.ac.destination);
+  }
+  return S.ac;
+}
+
+/* ---------- takes ---------- */
+function computePeaks(buf) {
+  const n = Math.ceil(buf.length / PEAK_BLOCK);
+  const mn = new Float32Array(n), mx = new Float32Array(n);
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < n; i++) {
+      let lo = mn[i], hi = mx[i];
+      const a = i * PEAK_BLOCK, b = Math.min(d.length, a + PEAK_BLOCK);
+      for (let k = a; k < b; k++) { const v = d[k]; if (v < lo) lo = v; else if (v > hi) hi = v; }
+      mn[i] = lo; mx[i] = hi;
+    }
+  }
+  return { mn, mx };
+}
+
+function addTake(name, buffer) {
+  const data = [];
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) data.push(buffer.getChannelData(ch));
+  const used = new Set(S.takes.map((t) => t.color));
+  const color = COLORS.find((c) => !used.has(c)) || COLORS[S.takes.length % COLORS.length];
+  const t = { id: newId(), name, buffer, data, peaks: computePeaks(buffer), sync: 0, color };
+  S.takes.push(t);
+  if (S.clips.length === 0) {
+    pushUndo();
+    S.clips.push(newClip(t, t.sync, 0, buffer.duration));
+  }
+  return t;
+}
+
+function newClip(take, start, offset, dur) {
+  return { id: newId(), takeId: take.id, start, offset, dur, gain: 0, fadeIn: 0.005, fadeOut: 0.005, xShape: 'eqp' };
+}
+
+async function importFiles(files) {
+  const list = [...files].filter((f) => /^audio\//.test(f.type) || /\.(wav|aiff?|flac|mp3|m4a|aac|ogg|oga|opus|webm|caf)$/i.test(f.name));
+  if (!list.length) { toast('Geen audiobestanden gevonden'); return; }
+  const ac = ensureAC();
+  const wasEmpty = S.takes.length === 0;
+  busy(true, `Importeren (0/${list.length})…`);
+  let i = 0;
+  for (const f of list) {
+    busy(true, `Importeren ${++i}/${list.length}: ${f.name}`);
+    try {
+      const ab = await f.arrayBuffer();
+      const buf = await new Promise((res, rej) => {
+        const p = ac.decodeAudioData(ab, res, rej);
+        if (p && p.then) p.then(res, rej);
+      });
+      addTake(f.name.replace(/\.[^.]+$/, ''), buf);
+    } catch (err) {
+      console.error(err);
+      toast(`Kon "${f.name}" niet lezen (formaat niet ondersteund door deze browser?)`);
+    }
+  }
+  busy(false);
+  buildHeads();
+  if (wasEmpty) zoomFit();
+  afterEdit();
+}
+
+function removeTake(t) {
+  if (!confirm(`Take "${t.name}" verwijderen? Clips uit deze take verdwijnen ook uit de edit. Dit kan niet ongedaan worden gemaakt.`)) return;
+  stop();
+  S.takes = S.takes.filter((x) => x !== t);
+  S.clips = S.clips.filter((c) => c.takeId !== t.id);
+  S.undo = []; S.redo = [];
+  if (S.range && S.range.takeId === t.id) S.range = null;
+  S.sel = null;
+  buildHeads(); afterEdit();
+}
+
+/* ---------- edit model ---------- */
+/** Alle posities op het samplegrid: zo hoeft de bron nooit geïnterpoleerd te worden en blijft de export bit-exact. */
+function quantize() {
+  if (!S.ac) return;
+  const sr = S.ac.sampleRate, q = (x) => Math.round(x * sr) / sr;
+  for (const t of S.takes) t.sync = q(t.sync);
+  for (const c of S.clips) {
+    const e = q(c.start + c.dur);
+    c.start = q(c.start); c.offset = Math.max(0, q(c.offset)); c.dur = e - c.start;
+  }
+}
+
+function normalize() {
+  quantize();
+  S.clips = S.clips.filter((c) => c.dur > MIN_DUR / 2 && takeOf(c.takeId));
+  S.clips.sort((a, b) => a.start - b.start || a.id - b.id);
+}
+
+function envelopes() {
+  const cl = S.clips;
+  return cl.map((c, i) => {
+    const p = cl[i - 1], nx = cl[i + 1];
+    let fin = 0, fout = 0, finShape = 's', foutShape = 's', finX = false, foutX = false;
+    if (p && end(p) > c.start + 1e-9) { fin = end(p) - c.start; finShape = c.xShape || 'eqp'; finX = true; }
+    else fin = c.fadeIn;
+    if (nx && end(c) > nx.start + 1e-9) { fout = end(c) - nx.start; foutShape = nx.xShape || 'eqp'; foutX = true; }
+    else fout = c.fadeOut;
+    fin = clamp(fin, 0, c.dur); fout = clamp(fout, 0, c.dur);
+    if (fin + fout > c.dur) { const k = c.dur / (fin + fout); fin *= k; fout *= k; }
+    return { fin, fout, finShape, foutShape, finX, foutX, g: dbLin(c.gain || 0) };
+  });
+}
+
+function envAt(c, e, t) {
+  const k = t - c.start, r = end(c) - t;
+  if (k < 0 || r < 0) return 0;
+  let v = e.g;
+  if (k < e.fin) v *= SHAPES[e.finShape].f(k / e.fin);
+  if (r < e.fout) v *= SHAPES[e.foutShape].f(r / e.fout);
+  return v;
+}
+
+/** Overgangen tussen opeenvolgende clips die elkaar raken of overlappen. */
+function junctions() {
+  const out = [], cl = S.clips;
+  for (let i = 0; i < cl.length - 1; i++) {
+    const a = cl[i], b = cl[i + 1];
+    if (b.start - end(a) <= 1e-6 && end(b) > end(a)) {
+      out.push({ a, b, s: Math.min(b.start, end(a)), e: end(a), len: Math.max(0, end(a) - b.start) });
+    }
+  }
+  return out;
+}
+function junctionOf(aId, bId) { return junctions().find((j) => j.a.id === aId && j.b.id === bId) || null; }
+
+/** Zet de crossfade-lengte symmetrisch rond het midden van de huidige overgang. */
+function setXfLen(a, b, L) {
+  const ta = takeOf(a.takeId), tb = takeOf(b.takeId);
+  const i = S.clips.indexOf(a);
+  const prevA = S.clips[i - 1], nextB = S.clips[i + 2];
+  const c = (b.start + end(a)) / 2;
+  let half = Math.max(0, L / 2);
+  half = Math.min(half,
+    ta.buffer.duration - (a.offset + (c - a.start)),   // bronmateriaal na het eind van A
+    b.offset + (c - b.start),                          // bronmateriaal voor het begin van B
+    c - a.start - MIN_DUR,
+    end(b) - c - MIN_DUR,
+    prevA ? c - end(prevA) : Infinity,
+    nextB ? nextB.start - c : Infinity);
+  half = Math.max(0, half);
+  a.dur = c + half - a.start;
+  const ns = c - half;
+  b.offset -= b.start - ns;
+  b.dur += b.start - ns;
+  b.start = ns;
+  return half * 2;
+}
+
+/** Roll-edit: verschuif het knippunt (eind A + begin B) met d seconden. */
+function roll(a, b, d) {
+  const ta = takeOf(a.takeId);
+  const i = S.clips.indexOf(a);
+  const prevA = S.clips[i - 1], nextB = S.clips[i + 2];
+  const ov = Math.max(0, end(a) - b.start);
+  const dmax = Math.min(ta.buffer.duration - a.offset - a.dur, b.dur - ov - MIN_DUR, nextB ? nextB.start - end(a) : Infinity);
+  const dmin = Math.max(-b.offset, ov + MIN_DUR - a.dur, prevA ? end(prevA) - b.start : -Infinity);
+  d = clamp(d, Math.min(0, dmin), Math.max(0, dmax));
+  a.dur += d;
+  b.start += d; b.offset += d; b.dur -= d;
+  return d;
+}
+
+function clampToSource(c) {
+  const t = takeOf(c.takeId), len = t.buffer.duration;
+  if (c.offset < 0) { const k = -c.offset; c.start += k; c.dur -= k; c.offset = 0; }
+  if (c.offset + c.dur > len) c.dur = len - c.offset;
+  return c.dur > MIN_DUR;
+}
+
+function autoXfades(c) {
+  const i = S.clips.indexOf(c);
+  const p = S.clips[i - 1], n = S.clips[i + 1];
+  if (p && Math.abs(end(p) - c.start) < 1e-6) setXfLen(p, c, S.defXf);
+  if (n && Math.abs(end(c) - n.start) < 1e-6) setXfLen(c, n, S.defXf);
+}
+
+/** Vervang [t0,t1] in de edit door hetzelfde stuk uit 'take' (swipe-comping). */
+function replaceRange(take, t0, t1) {
+  t0 = Math.max(t0, take.sync, 0);
+  t1 = Math.min(t1, take.sync + take.buffer.duration);
+  if (t1 - t0 < 0.01) { toast('Selectie valt buiten deze take'); return; }
+  mutate(() => {
+    const out = [];
+    for (const c of S.clips) {
+      const ce = end(c);
+      if (ce <= t0 || c.start >= t1) { out.push(c); continue; }
+      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.005 });
+      if (ce > t1) {
+        const k = t1 - c.start;
+        out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t1, offset: c.offset + k, dur: ce - t1, fadeIn: 0.005, xShape: 'eqp' });
+      }
+    }
+    const nc = newClip(take, t0, t0 - take.sync, t1 - t0);
+    out.push(nc);
+    S.clips = out; normalize();
+    autoXfades(nc);
+    S.sel = { kind: 'clip', id: nc.id };
+  });
+}
+
+function splitAt(t) {
+  let c = S.sel && S.sel.kind === 'clip' ? clipOf(S.sel.id) : null;
+  if (!c || !(c.start + MIN_DUR < t && t < end(c) - MIN_DUR)) {
+    c = [...S.clips].reverse().find((x) => x.start + MIN_DUR < t && t < end(x) - MIN_DUR);
+  }
+  if (!c) { toast('Geen clip onder de afspeelkop'); return; }
+  mutate(() => {
+    const k = t - c.start;
+    const n = { ...c, id: newId(), start: t, offset: c.offset + k, dur: c.dur - k, fadeIn: 0.005, xShape: 'eqp' };
+    c.dur = k; c.fadeOut = 0.005;
+    S.clips.push(n);
+    S.sel = { kind: 'clip', id: n.id };
+  });
+}
+
+function swapTake(c, take) {
+  const old = takeOf(c.takeId);
+  mutate(() => {
+    c.offset += old.sync - take.sync;
+    c.takeId = take.id;
+    if (!clampToSource(c)) { S.clips = S.clips.filter((x) => x !== c); toast('Deze take heeft geen materiaal op die plek'); return; }
+    normalize();
+    autoXfades(c);
+  });
+}
+
+function deleteSelection() {
+  const s = S.sel;
+  if (!s) return;
+  if (s.kind === 'clip') {
+    mutate(() => { S.clips = S.clips.filter((c) => c.id !== s.id); S.sel = null; });
+  } else if (s.kind === 'junction') {
+    const j = junctionOf(s.a, s.b);
+    if (j) mutate(() => setXfLen(j.a, j.b, 0));
+  } else if (s.kind === 'take') {
+    const t = takeOf(s.id); if (t) removeTake(t);
+  }
+}
+
+/* ---------- undo ---------- */
+function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]) }); }
+function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift(); S.redo.length = 0; }
+function restore(str) {
+  const o = JSON.parse(str);
+  S.clips = o.clips.filter((c) => takeOf(c.takeId));
+  o.sync.forEach(([id, s]) => { const t = takeOf(id); if (t) t.sync = s; });
+  afterEdit();
+}
+function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
+function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
+
+function mutate(fn) { pushUndo(); fn(); afterEdit(); }
+
+function validateSel() {
+  const s = S.sel;
+  if (!s) return;
+  if (s.kind === 'clip' && !clipOf(s.id)) S.sel = null;
+  else if (s.kind === 'junction' && !junctionOf(s.a, s.b)) S.sel = null;
+  else if (s.kind === 'take' && !takeOf(s.id)) S.sel = null;
+}
+
+function afterEdit() {
+  normalize(); validateSel();
+  S.dirty = true;
+  buildHeads(); renderInspector(); updateButtons(); updateScroll();
+  const p = S.playing;
+  if (p && p.mode === 'edit') {
+    if (p.loop) play(p.loop[0], p.loop[1], p.loop);
+    else play(S.playhead);
+  }
+}
+
+/* ---------- playback ---------- */
+/** Plant alle clips in [from,to) in op context 'ac' vanaf contexttijd 'when'. */
+function scheduleGraph(ac, dest, from, to, when) {
+  const env = envelopes();
+  const srcs = [];
+  S.clips.forEach((c, i) => {
+    const cs = c.start, ce = end(c);
+    if (ce <= from || cs >= to) return;
+    const take = takeOf(c.takeId), e = env[i];
+    const p0 = Math.max(cs, from), p1 = Math.min(ce, to);
+    if (p1 - p0 < 1e-4) return;
+    const ct = (t) => when + (t - from);
+    const src = ac.createBufferSource();
+    src.buffer = take.buffer;
+    const g = ac.createGain();
+    src.connect(g); g.connect(dest);
+    g.gain.value = envAt(c, e, p0);
+    const curve = (t0, t1) => {
+      if (t1 - t0 < 1e-4) return;
+      const n = Math.max(2, Math.min(2048, Math.ceil((t1 - t0) * 2000)));
+      const arr = new Float32Array(n);
+      for (let k = 0; k < n; k++) arr[k] = envAt(c, e, t0 + (t1 - t0) * k / (n - 1) - (k === n - 1 ? 1e-7 : 0));
+      try { g.gain.setValueCurveAtTime(arr, ct(t0), t1 - t0); }
+      catch (err) { try { g.gain.linearRampToValueAtTime(arr[n - 1], ct(t1)); } catch (_) { /* ignore */ } }
+    };
+    const fiEnd = cs + e.fin;
+    if (e.fin > 0 && fiEnd > p0) curve(p0, Math.min(fiEnd, p1));
+    const foStart = ce - e.fout;
+    if (e.fout > 0 && p1 > foStart) {
+      let a = Math.max(foStart, p0);
+      if (e.fin > 0 && fiEnd > p0 && a < Math.min(fiEnd, p1) + 2e-4) a = Math.min(fiEnd, p1) + 2e-4;
+      curve(a, p1);
+    }
+    const off = c.offset + (p0 - cs);
+    if (off < take.buffer.duration) {
+      src.start(ct(p0), Math.max(0, off), p1 - p0);
+      srcs.push(src);
+    }
+  });
+  return srcs;
+}
+
+function play(from, to, loop) {
+  stopSources();
+  if (!S.clips.length) { toast('De edit is leeg'); return; }
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  const stopAt = to ?? editEnd();
+  from = Math.max(0, from);
+  if (from >= stopAt - 0.01) { if (loop) return; from = 0; }
+  const when = ac.currentTime + 0.06;
+  const srcs = scheduleGraph(ac, S.master, from, stopAt, when);
+  S.playing = { mode: 'edit', srcs, from, to: stopAt, when, loop: loop || null };
+  S.playhead = from;
+  updatePlayBtn();
+}
+
+function playTake(take, from) {
+  stopSources();
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  const stopAt = take.sync + take.buffer.duration;
+  if (from >= stopAt - 0.01 || from < take.sync) from = take.sync;
+  from = Math.max(0, from);
+  const when = ac.currentTime + 0.06;
+  const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
+  src.start(when + Math.max(0, take.sync - from), Math.max(0, from - take.sync));
+  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from, to: stopAt, when, loop: null };
+  S.playhead = from;
+  updatePlayBtn(); buildHeads();
+}
+
+function playRange(take, t0, t1) {
+  stopSources();
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  t0 = Math.max(t0, take.sync); t1 = Math.min(t1, take.sync + take.buffer.duration);
+  if (t1 <= t0) return;
+  const when = ac.currentTime + 0.06;
+  const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
+  src.start(when, t0 - take.sync, t1 - t0);
+  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from: t0, to: t1, when, loop: null };
+  updatePlayBtn(); buildHeads();
+}
+
+function stopSources() {
+  const p = S.playing;
+  if (!p) return;
+  p.srcs.forEach((s) => { try { s.stop(); } catch (_) { /* already stopped */ } try { s.disconnect(); } catch (_) { /* noop */ } });
+  S.playing = null;
+}
+function stop() { const wasTake = S.playing && S.playing.mode === 'take'; stopSources(); updatePlayBtn(); if (wasTake) buildHeads(); }
+function togglePlay() { if (S.playing) stop(); else play(S.playhead); }
+
+function auditionJunction() {
+  const s = S.sel;
+  if (!s || s.kind !== 'junction') return;
+  const j = junctionOf(s.a, s.b); if (!j) return;
+  const a = Math.max(0, j.s - S.preroll), b = j.e + S.preroll;
+  play(a, b, S.loopAudition ? [a, b] : null);
+}
+
+function updatePlayBtn() {
+  const b = $('playBtn');
+  b.textContent = S.playing ? '■' : '▶';
+  b.classList.toggle('on', !!S.playing);
+}
+
+/* ---------- offline mix (voorvertoning + export) ---------- */
+function renderMono(t0, t1, sr) {
+  const n = Math.max(1, Math.round((t1 - t0) * sr));
+  const out = new Float32Array(n);
+  const env = envelopes();
+  S.clips.forEach((c, i) => {
+    const ce = end(c);
+    if (ce <= t0 || c.start >= t1) return;
+    const tk = takeOf(c.takeId), chs = tk.data, nc = chs.length, bsr = tk.buffer.sampleRate, len = chs[0].length;
+    const a = Math.max(0, Math.floor((c.start - t0) * sr)), b = Math.min(n, Math.ceil((ce - t0) * sr));
+    for (let k = a; k < b; k++) {
+      const t = t0 + k / sr;
+      const e = envAt(c, env[i], t);
+      if (e === 0) continue;
+      const si = Math.round((t - c.start + c.offset) * bsr);
+      if (si < 0 || si >= len) continue;
+      let v = 0;
+      for (let ch = 0; ch < nc; ch++) v += chs[ch][si];
+      out[k] += (v / nc) * e;
+    }
+  });
+  return out;
+}
+
+async function exportWav() {
+  if (!S.clips.length) { toast('De edit is leeg'); return; }
+  const ac = ensureAC();
+  const sr = ac.sampleRate, len = editEnd();
+  const used = new Set(S.clips.map((c) => c.takeId));
+  const nch = Math.max(1, ...S.takes.filter((t) => used.has(t.id)).map((t) => t.buffer.numberOfChannels));
+  const bits = +$('bitDepth').value;
+  busy(true, 'Exporteren…');
+  try {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const oac = new OAC(Math.min(nch, 2), Math.max(1, Math.ceil(len * sr)), sr);
+    scheduleGraph(oac, oac.destination, 0, len, 0);
+    const buf = await oac.startRendering();
+    let peak = 0;
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; }
+    }
+    const blob = encodeWav(buf, bits);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'edit.wav';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    const pdb = peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞';
+    toast(peak > 1 && bits !== 32
+      ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Verlaag de gain.`
+      : `Geëxporteerd: ${fmt(len)} · ${sr} Hz · ${bits}-bit · piek ${pdb} dBFS`);
+  } catch (err) {
+    console.error(err); toast('Export mislukt: ' + err.message);
+  } finally { busy(false); }
+}
+
+function encodeWav(buf, bits) {
+  const nch = buf.numberOfChannels, sr = buf.sampleRate, n = buf.length, bps = bits / 8;
+  const dataLen = n * nch * bps;
+  const ab = new ArrayBuffer(44 + dataLen), v = new DataView(ab);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + dataLen, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, bits === 32 ? 3 : 1, true);
+  v.setUint16(22, nch, true); v.setUint32(24, sr, true); v.setUint32(28, sr * nch * bps, true);
+  v.setUint16(32, nch * bps, true); v.setUint16(34, bits, true);
+  str(36, 'data'); v.setUint32(40, dataLen, true);
+  const chs = []; for (let c = 0; c < nch; c++) chs.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < nch; c++) {
+      const x = chs[c][i];
+      if (bits === 32) { v.setFloat32(o, x, true); o += 4; continue; }
+      const y = clamp(x, -1, 1);
+      if (bits === 16) { v.setInt16(o, Math.round(y < 0 ? y * 32768 : y * 32767), true); o += 2; }
+      else {
+        const s = Math.round(y < 0 ? y * 8388608 : y * 8388607);
+        v.setUint8(o, s & 255); v.setUint8(o + 1, (s >> 8) & 255); v.setUint8(o + 2, (s >> 16) & 255); o += 3;
+      }
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+/* ---------- uitlijnen ---------- */
+/** Verschuif de inhoud van B (slip) zodat de golfvormen in de crossfade zo goed mogelijk in fase lopen. */
+function phaseAlign(j) {
+  const a = j.a, b = j.b, ta = takeOf(a.takeId), tb = takeOf(b.takeId);
+  const sr = tb.buffer.sampleRate;
+  let w0 = j.s, w1 = j.e;
+  const c = (w0 + w1) / 2;
+  if (w1 - w0 < 0.03) { w0 = c - 0.015; w1 = c + 0.015; }
+  if (w1 - w0 > 0.25) { w0 = c - 0.125; w1 = c + 0.125; }
+  const N = Math.round((w1 - w0) * sr);
+  const mono = (tk, s0) => {
+    const out = new Float32Array(N), d = tk.data, r = tk.buffer.sampleRate;
+    for (let k = 0; k < N; k++) {
+      const si = Math.round((s0 + k / sr) * r);
+      if (si < 0 || si >= d[0].length) continue;
+      let v = 0; for (const ch of d) v += ch[si]; out[k] = v / d.length;
+    }
+    return out;
+  };
+  const A = mono(ta, a.offset + (w0 - a.start));
+  const maxLag = Math.round(0.010 * sr);
+  const bBase = b.offset + (w0 - b.start);
+  const Bext = (() => {
+    const out = new Float32Array(N + 2 * maxLag), d = tb.data, r = tb.buffer.sampleRate;
+    for (let k = 0; k < out.length; k++) {
+      const si = Math.round((bBase + (k - maxLag) / sr) * r);
+      if (si < 0 || si >= d[0].length) continue;
+      let v = 0; for (const ch of d) v += ch[si]; out[k] = v / d.length;
+    }
+    return out;
+  })();
+  let ea = 0; for (let k = 0; k < N; k++) ea += A[k] * A[k];
+  if (ea < 1e-9) { toast('Te stil om uit te lijnen'); return; }
+  let best = 0, bestScore = -Infinity;
+  const lagMin = Math.max(-maxLag, Math.ceil(-b.offset * sr));
+  const lagMax = Math.min(maxLag, Math.floor((tb.buffer.duration - b.offset - b.dur) * sr));
+  for (let lag = lagMin; lag <= lagMax; lag++) {
+    let dot = 0, eb = 0;
+    const o = lag + maxLag;
+    for (let k = 0; k < N; k++) { const y = Bext[k + o]; dot += A[k] * y; eb += y * y; }
+    const sc = eb > 1e-12 ? dot / Math.sqrt(ea * eb) : -Infinity;
+    if (sc > bestScore) { bestScore = sc; best = lag; }
+  }
+  if (!isFinite(bestScore)) { toast('Niet genoeg materiaal om uit te lijnen'); return; }
+  mutate(() => { b.offset += best / sr; });
+  toast(`B ${best >= 0 ? 'later' : 'eerder'} uit de bron gehaald: ${(Math.abs(best) / sr * 1000).toFixed(2)} ms · correlatie ${bestScore.toFixed(2)}`);
+}
+
+function onsetEnv(tk, rate) {
+  const d = tk.data, sr = tk.buffer.sampleRate, hop = Math.round(sr / rate);
+  const frames = Math.min(Math.floor(d[0].length / hop), rate * 90);
+  const rms = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) {
+    let s = 0;
+    for (let k = f * hop; k < (f + 1) * hop; k += 2) for (const ch of d) s += ch[k] * ch[k];
+    rms[f] = Math.sqrt(s / (hop / 2 * d.length));
+  }
+  const flux = new Float32Array(frames);
+  for (let f = 1; f < frames; f++) flux[f] = Math.max(0, rms[f] - rms[f - 1]);
+  let m = 0; for (const v of flux) m += v; m /= frames || 1;
+  for (let f = 0; f < frames; f++) flux[f] -= m;
+  return flux;
+}
+
+/** Bepaal de sync van 'take' ten opzichte van 'ref' via de inzetten (onsets). */
+function autoSync(take, ref) {
+  const rate = 200;
+  const ea = onsetEnv(ref, rate), eb = onsetEnv(take, rate);
+  const maxLag = rate * 10;
+  let best = 0, bestScore = -Infinity;
+  for (let L = -maxLag; L <= maxLag; L++) {
+    let s = 0, n = 0;
+    const i0 = Math.max(0, -L), i1 = Math.min(eb.length, ea.length - L);
+    for (let i = i0; i < i1; i++) { s += eb[i] * ea[i + L]; n++; }
+    if (n > rate && s > bestScore) { bestScore = s; best = L; }
+  }
+  mutate(() => { take.sync = Math.max(0, ref.sync + best / rate); });
+  toast(`"${take.name}" uitgelijnd op "${ref.name}": sync ${ms(take.sync)} ms`);
+}
+
+/* ---------- tekenen ---------- */
+const cv = $('tl'), base = document.createElement('canvas');
+let cssW = 600, cssH = 300, dpr = 1;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  cssW = Math.max(100, $('canvasWrap').clientWidth);
+  cssH = RULER + EDIT_H + Math.max(1, S.takes.length) * TAKE_H;
+  for (const c of [cv, base]) { c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr); }
+  cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+  S.dirty = true;
+  updateScroll();
+}
+
+function drawWave(g, take, srcBase, xa, xb, tOf, spx, yMid, halfH, envFn) {
+  const sr = take.buffer.sampleRate, n = take.buffer.length, P = take.peaks, d = take.data;
+  const sppS = spx * sr;
+  for (let x = Math.max(0, Math.floor(xa)); x < Math.ceil(xb); x++) {
+    const t = tOf(x);
+    const s0 = (t - srcBase) * sr, s1 = s0 + sppS;
+    if (s1 < 0 || s0 >= n) continue;
+    const a = Math.max(0, Math.floor(s0)), b = Math.min(n, Math.max(a + 1, Math.ceil(s1)));
+    let lo = 0, hi = 0;
+    if (b - a > PEAK_BLOCK * 2) {
+      const ba = Math.floor(a / PEAK_BLOCK), bb = Math.min(P.mn.length, Math.ceil(b / PEAK_BLOCK));
+      for (let i = ba; i < bb; i++) { if (P.mn[i] < lo) lo = P.mn[i]; if (P.mx[i] > hi) hi = P.mx[i]; }
+    } else {
+      for (const ch of d) for (let i = a; i < b; i++) { const v = ch[i]; if (v < lo) lo = v; else if (v > hi) hi = v; }
+    }
+    if (envFn) { const e = envFn(t + spx / 2); lo *= e; hi *= e; }
+    lo = clamp(lo, -1, 1); hi = clamp(hi, -1, 1);
+    g.fillRect(x, yMid - hi * halfH, 1, Math.max(1, (hi - lo) * halfH));
+  }
+}
+
+function tickStep() {
+  const steps = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  return steps.find((s) => s * S.pps >= 80) || 600;
+}
+
+function drawBase() {
+  const g = base.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, cssW, cssH);
+  const W = cssW;
+
+  // lanes
+  g.fillStyle = '#12151a'; g.fillRect(0, RULER, W, EDIT_H);
+  S.takes.forEach((t, k) => {
+    const y = RULER + EDIT_H + k * TAKE_H;
+    g.fillStyle = S.sel && S.sel.kind === 'take' && S.sel.id === t.id ? '#1a1f28' : (k % 2 ? '#15181e' : '#171a20');
+    g.fillRect(0, y, W, TAKE_H);
+  });
+
+  // ruler + grid
+  g.fillStyle = '#1d2128'; g.fillRect(0, 0, W, RULER);
+  const step = tickStep(), minor = step / 5;
+  const t0 = Math.floor(S.view / minor) * minor;
+  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  for (let t = t0; t < tAt(W); t += minor) {
+    const x = Math.round(px(t)) + 0.5;
+    const major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
+    g.fillStyle = major ? '#5a6272' : '#363c47';
+    g.fillRect(x, major ? 12 : 19, 1, major ? 14 : 7);
+    if (major) {
+      g.fillStyle = 'rgba(255,255,255,0.035)'; g.fillRect(x, RULER, 1, cssH - RULER);
+      g.fillStyle = '#8b93a1';
+      g.fillText(fmt(Math.max(0, t), step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0), x + 3, 2);
+    }
+  }
+  g.fillStyle = '#2a2f38'; g.fillRect(0, RULER - 1, W, 1); g.fillRect(0, RULER + EDIT_H - 1, W, 1);
+
+  // edit lane
+  const env = envelopes();
+  const y = RULER + 6, h = EDIT_H - 12;
+  if (!S.clips.length) {
+    g.fillStyle = '#5a6272'; g.font = '13px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillText(S.takes.length ? 'Edit is leeg — selecteer een stuk in een take hieronder en druk E' : 'Sleep audiobestanden hierheen, of klik op "Importeer takes" (of "Demo")', 16, RULER + EDIT_H / 2);
+  }
+  S.clips.forEach((c, i) => {
+    const tk = takeOf(c.takeId), e = env[i];
+    const x0 = px(c.start), x1 = px(end(c));
+    if (x1 < -2 || x0 > W + 2) return;
+    const sel = S.sel && S.sel.kind === 'clip' && S.sel.id === c.id;
+    g.fillStyle = hexA(tk.color, sel ? 0.22 : 0.13); g.fillRect(x0, y, x1 - x0, h);
+    g.fillStyle = hexA(tk.color, sel ? 0.75 : 0.5); g.fillRect(x0, y, x1 - x0, 15);
+    g.save();
+    g.beginPath(); g.rect(x0, y, x1 - x0, h); g.clip();
+    g.fillStyle = '#fff'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillText(tk.name + (c.gain ? `  ${c.gain > 0 ? '+' : ''}${c.gain.toFixed(1)} dB` : ''), Math.max(x0, 0) + 5, y + 8);
+    g.fillStyle = tk.color;
+    const mid = y + 15 + (h - 15) / 2, hh = (h - 15) / 2 - 3;
+    drawWave(g, tk, c.start - c.offset, Math.max(x0, 0), Math.min(x1, W), tAt, 1 / S.pps, mid, hh, (t) => envAt(c, e, t));
+    // gewone fades (geen crossfade)
+    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1;
+    const fadeLine = (ta, tb, up) => {
+      if (px(tb) - px(ta) < 2) return;
+      g.beginPath();
+      for (let xx = px(ta); xx <= px(tb); xx += 2) {
+        const u = (tAt(xx) - ta) / (tb - ta);
+        const v = SHAPES.s.f(up ? u : 1 - u);
+        const yy = y + 15 + (1 - v) * (h - 15);
+        xx === px(ta) ? g.moveTo(xx, yy) : g.lineTo(xx, yy);
+      }
+      g.stroke();
+    };
+    if (!e.finX && e.fin > 0) fadeLine(c.start, c.start + e.fin, true);
+    if (!e.foutX && e.fout > 0) fadeLine(end(c) - e.fout, end(c), false);
+    g.restore();
+    g.strokeStyle = sel ? '#fff' : hexA(tk.color, 0.9); g.lineWidth = sel ? 2 : 1;
+    g.strokeRect(x0 + 0.5, y + 0.5, Math.max(1, x1 - x0 - 1), h - 1);
+  });
+
+  // crossfades
+  junctions().forEach((j) => {
+    const xs = px(j.s), xe = px(j.e);
+    if (xe < -10 || xs > W + 10) return;
+    const sel = S.sel && S.sel.kind === 'junction' && S.sel.a === j.a.id && S.sel.b === j.b.id;
+    const ca = takeOf(j.a.takeId).color, cb = takeOf(j.b.takeId).color;
+    if (xe - xs >= 2) {
+      g.fillStyle = sel ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)';
+      g.fillRect(xs, y, xe - xs, h);
+      const f = SHAPES[j.b.xShape || 'eqp'].f;
+      const top = y + 15, hh = h - 15;
+      for (const [fade, col] of [[(u) => f(1 - u), ca], [(u) => f(u), cb]]) {
+        g.beginPath(); g.strokeStyle = col; g.lineWidth = 2;
+        const n = Math.max(2, Math.ceil(xe - xs) / 2);
+        for (let k = 0; k <= n; k++) {
+          const u = k / n, xx = xs + u * (xe - xs), yy = top + (1 - fade(u)) * hh;
+          k ? g.lineTo(xx, yy) : g.moveTo(xx, yy);
+        }
+        g.stroke();
+      }
+    } else {
+      g.fillStyle = sel ? '#fff' : 'rgba(255,255,255,0.5)';
+      g.fillRect(Math.round(xs) - 1, y + 15, 2, h - 15);
+    }
+    // vlinder-handvat onderaan
+    const cx = (xs + xe) / 2, by = y + h - 9;
+    g.fillStyle = sel ? '#fff' : '#c9ced8';
+    g.beginPath(); g.moveTo(cx - 6, by - 5); g.lineTo(cx + 6, by + 5); g.lineTo(cx + 6, by - 5); g.lineTo(cx - 6, by + 5); g.closePath(); g.fill();
+    if (sel || xe - xs > 46) {
+      g.font = '10px system-ui, sans-serif'; g.textBaseline = 'bottom'; g.textAlign = 'center';
+      g.fillStyle = '#fff'; g.fillText(`${ms(j.len)} ms`, cx, by - 7);
+      g.textAlign = 'left';
+    }
+  });
+
+  // takes
+  S.takes.forEach((t, k) => {
+    const y0 = RULER + EDIT_H + k * TAKE_H;
+    const xs = px(t.sync), xe = px(t.sync + t.buffer.duration);
+    if (xe > 0 && xs < W) {
+      g.fillStyle = hexA(t.color, 0.08); g.fillRect(xs, y0 + 4, xe - xs, TAKE_H - 8);
+      g.fillStyle = hexA(t.color, 0.26);
+      S.clips.forEach((c) => {
+        if (c.takeId !== t.id) return;
+        const a = px(t.sync + c.offset), b = px(t.sync + c.offset + c.dur);
+        g.fillRect(a, y0 + 4, b - a, TAKE_H - 8);
+        g.fillRect(a, y0 + 4, b - a, 3);
+      });
+      g.fillStyle = hexA(t.color, 0.85);
+      drawWave(g, t, t.sync, Math.max(xs, 0), Math.min(xe, W), tAt, 1 / S.pps, y0 + TAKE_H / 2, TAKE_H / 2 - 7, null);
+      g.strokeStyle = hexA(t.color, 0.5); g.lineWidth = 1;
+      g.strokeRect(xs + 0.5, y0 + 4.5, xe - xs - 1, TAKE_H - 9);
+    }
+    if (S.range && S.range.takeId === t.id) {
+      const a = px(Math.min(S.range.t0, S.range.t1)), b = px(Math.max(S.range.t0, S.range.t1));
+      g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(a, y0 + 2, b - a, TAKE_H - 4);
+      g.fillStyle = '#fff'; g.fillRect(a, y0 + 2, 1, TAKE_H - 4); g.fillRect(b - 1, y0 + 2, 1, TAKE_H - 4);
+    }
+    g.fillStyle = '#2a2f38'; g.fillRect(0, y0 + TAKE_H - 1, W, 1);
+  });
+  if (!S.takes.length) {
+    g.fillStyle = '#4a5160'; g.font = '12px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillText('Hier verschijnen je takes', 16, RULER + EDIT_H + TAKE_H / 2);
+  }
+
+  // ghost van de selectie in de edit
+  if (S.range) {
+    const a = px(Math.min(S.range.t0, S.range.t1)), b = px(Math.max(S.range.t0, S.range.t1));
+    g.setLineDash([4, 3]); g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 1;
+    g.strokeRect(a + 0.5, y + 0.5, b - a - 1, h - 1); g.setLineDash([]);
+  }
+}
+
+function frame() {
+  const p = S.playing;
+  if (p) {
+    const ac = S.ac;
+    let t = p.from + (ac.currentTime - p.when);
+    if (t < p.from) t = p.from;
+    if (t >= p.to) {
+      if (p.loop) { play(p.loop[0], p.loop[1], p.loop); t = p.loop[0]; }
+      else {
+        stop(); t = p.mode === 'edit' ? p.to : S.playhead;
+        if (S.sel && S.sel.kind === 'junction') renderInspector();
+      }
+    }
+    S.playhead = t;
+    // volgen
+    const x = px(t);
+    if (!S.drag && (x > cssW - 30 || x < 0)) { S.view = Math.max(0, t - 30 / S.pps); S.dirty = true; updateScroll(); }
+    // meter
+    if (S.analyser) {
+      const buf = new Float32Array(S.analyser.fftSize);
+      S.analyser.getFloatTimeDomainData(buf);
+      let pk = 0; for (const v of buf) { const a = Math.abs(v); if (a > pk) pk = a; }
+      S.meter = Math.max(pk, S.meter * 0.92);
+    }
+  } else S.meter *= 0.85;
+  if (S.dirty) { drawBase(); S.dirty = false; }
+  const g = cv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.drawImage(base, 0, 0);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const x = Math.round(px(S.playhead)) + 0.5;
+  if (x >= 0 && x <= cssW) {
+    g.fillStyle = 'rgba(255,92,108,0.95)';
+    g.fillRect(x - 0.5, 0, 1.5, cssH);
+    g.beginPath(); g.moveTo(x - 6, 0); g.lineTo(x + 6, 0); g.lineTo(x, 8); g.closePath(); g.fill();
+  }
+  $('clock').textContent = fmt(S.playhead);
+  drawMeter();
+  requestAnimationFrame(frame);
+}
+
+function drawMeter() {
+  const m = $('meter'); if (!m) return;
+  const w = m.clientWidth, h = m.clientHeight;
+  if (m.width !== w * dpr) { m.width = w * dpr; m.height = h * dpr; }
+  const g = m.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const db = S.meter > 0 ? 20 * Math.log10(S.meter) : -100;
+  const f = clamp((db + 48) / 48, 0, 1);
+  g.fillStyle = db > -0.5 ? '#ff5c6c' : db > -6 ? '#ffd32a' : '#2ed573';
+  g.fillRect(0, 0, w * f, h);
+}
+
+/* ---------- crossfade-detailweergave ---------- */
+function drawXf() {
+  const c = $('xfCanvas');
+  const s = S.sel;
+  if (!c || !s || s.kind !== 'junction') return;
+  const j = junctionOf(s.a, s.b); if (!j) return;
+  const W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  if (!(S.drag && S.drag.xf) || !S.xfView) {
+    const mid = (j.s + j.e) / 2, half = Math.max((j.e - j.s) * 0.8, 0.03);
+    S.xfView = { t0: mid - half, spx: (2 * half) / W };
+  }
+  const { t0, spx } = S.xfView;
+  const tOf = (x) => t0 + x * spx, xOf = (t) => (t - t0) / spx;
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const env = envelopes();
+  const ia = S.clips.indexOf(j.a), ib = S.clips.indexOf(j.b);
+  const ta = takeOf(j.a.takeId), tb = takeOf(j.b.takeId);
+  const rowH = (H - 8) / 3;
+  const rows = [
+    { label: 'A · ' + ta.name, tk: ta, clip: j.a, e: env[ia] },
+    { label: 'B · ' + tb.name, tk: tb, clip: j.b, e: env[ib] },
+  ];
+  // crossfadegebied
+  const xs = xOf(j.s), xe = xOf(j.e);
+  g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(xs, 0, Math.max(1, xe - xs), H);
+  rows.forEach((r, k) => {
+    const y = 4 + k * rowH, mid = y + rowH / 2, hh = rowH / 2 - 4;
+    g.fillStyle = 'rgba(255,255,255,0.04)'; g.fillRect(0, mid, W, 1);
+    g.fillStyle = hexA(r.tk.color, 0.22);
+    drawWave(g, r.tk, r.clip.start - r.clip.offset, 0, W, tOf, spx, mid, hh, null);
+    g.fillStyle = r.tk.color;
+    drawWave(g, r.tk, r.clip.start - r.clip.offset, 0, W, tOf, spx, mid, hh, (t) => envAt(r.clip, r.e, t));
+    // envelope
+    g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath();
+    for (let x = 0; x <= W; x += 2) {
+      const v = envAt(r.clip, r.e, tOf(x)) / r.e.g;
+      const yy = y + 2 + (1 - v) * (rowH - 4);
+      x ? g.lineTo(x, yy) : g.moveTo(x, yy);
+    }
+    g.stroke();
+    g.fillStyle = '#c9ced8'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'top';
+    g.fillText(r.label, 6, y + 2);
+  });
+  // mix
+  const y = 4 + 2 * rowH, mid = y + rowH / 2, hh = rowH / 2 - 4;
+  const sr = Math.min(48000, (S.ac && S.ac.sampleRate) || 48000);
+  const mix = renderMono(t0, t0 + W * spx, sr);
+  const per = mix.length / W;
+  g.fillStyle = '#e6e8ec';
+  for (let x = 0; x < W; x++) {
+    let lo = 0, hi = 0;
+    const a = Math.floor(x * per), b = Math.max(a + 1, Math.floor((x + 1) * per));
+    for (let k = a; k < b && k < mix.length; k++) { const v = mix[k]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    g.fillRect(x, mid - clamp(hi, -1, 1) * hh, 1, Math.max(1, (clamp(hi, -1, 1) - clamp(lo, -1, 1)) * hh));
+  }
+  g.fillStyle = '#c9ced8'; g.fillText('Resultaat', 6, y + 2);
+  // lijnen
+  g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(0, 4 + rowH, W, 1); g.fillRect(0, 4 + 2 * rowH, W, 1);
+  g.fillStyle = '#ffd32a';
+  g.fillRect(Math.round(xOf((j.s + j.e) / 2)), 0, 1, H);
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.fillRect(Math.round(xs), 0, 1, H); g.fillRect(Math.round(xe), 0, 1, H);
+  const ph = xOf(S.playhead);
+  if (ph >= 0 && ph <= W) { g.fillStyle = '#ff5c6c'; g.fillRect(Math.round(ph), 0, 1, H); }
+  g.fillStyle = '#8b93a1'; g.textAlign = 'right'; g.textBaseline = 'bottom';
+  g.fillText(`venster ${Math.round(W * spx * 1000)} ms`, W - 6, H - 3);
+  g.textAlign = 'left';
+}
+
+/* ---------- koppen + inspector ---------- */
+function buildHeads() {
+  const el = $('heads');
+  let html = `<div class="head ruler" style="height:${RULER}px">${S.takes.length ? 'tijd' : ''}</div>`;
+  html += `<div class="head edit" style="height:${EDIT_H}px"><strong>EDIT</strong><span class="meta">${S.clips.length} clip${S.clips.length === 1 ? '' : 's'} · ${fmt(editEnd(), 1)}</span><canvas id="meter"></canvas></div>`;
+  S.takes.forEach((t) => {
+    const sel = S.sel && S.sel.kind === 'take' && S.sel.id === t.id;
+    const playing = S.playing && S.playing.mode === 'take' && S.playing.takeId === t.id;
+    html += `<div class="head take${sel ? ' sel' : ''}" data-take="${t.id}" style="height:${TAKE_H}px">
+      <div class="name"><span class="sw" style="background:${t.color}"></span><span title="${esc(t.name)}">${esc(t.name)}</span></div>
+      <div class="meta"><button data-solo="${t.id}" title="Speel deze take vanaf de afspeelkop">${playing ? '■' : '▶'} solo</button><span>${fmt(t.buffer.duration, 1)}</span></div>
+    </div>`;
+  });
+  if (!S.takes.length) html += `<div class="head placeholder" style="height:${TAKE_H}px">Takes</div>`;
+  el.innerHTML = html;
+  resize();
+}
+
+$('heads').addEventListener('click', (e) => {
+  const solo = e.target.closest('[data-solo]');
+  if (solo) {
+    const t = takeOf(+solo.dataset.solo);
+    if (S.playing && S.playing.mode === 'take' && S.playing.takeId === t.id) stop();
+    else playTake(t, S.playhead);
+    return;
+  }
+  const h = e.target.closest('[data-take]');
+  if (h) select({ kind: 'take', id: +h.dataset.take });
+});
+
+function select(sel) {
+  S.sel = sel;
+  if (!(sel && sel.kind === 'take' && S.range && S.range.takeId === sel.id)) S.range = null;
+  S.xfView = null;
+  S.dirty = true;
+  buildHeads(); renderInspector(); updateButtons();
+}
+
+function updateButtons() {
+  $('undoBtn').disabled = !S.undo.length;
+  $('redoBtn').disabled = !S.redo.length;
+  $('compBtn').disabled = !S.range;
+  $('deleteBtn').disabled = !S.sel;
+  $('splitBtn').disabled = !S.clips.length;
+  $('exportBtn').disabled = !S.clips.length;
+  $('playBtn').disabled = !S.clips.length && !S.playing;
+}
+
+function renderInspector() {
+  const el = $('inspector');
+  const s = S.sel;
+  if (s && s.kind === 'junction') {
+    const j = junctionOf(s.a, s.b);
+    if (j) return inspectJunction(el, j);
+  }
+  if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
+  if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
+  el.innerHTML = `<div class="help">
+    <h2>Zo werkt het</h2>
+    <ol>
+      <li><b>Importeer je takes</b> (wav, aiff, flac, mp3, m4a…), of sleep ze in het venster. De eerste take komt meteen in de <b>edit</b> (bovenste baan); alle takes staan eronder.</li>
+      <li><b>Sleep in een take-baan</b> om een stuk te selecteren en druk <kbd>E</kbd> (of <i>Naar edit</i>). Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten. Zo stel je per zin of maat de beste take samen.</li>
+      <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
+      <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
+      <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
+    </ol>
+    <div class="keys">
+      <span><kbd>Spatie</kbd> afspelen / stoppen</span>
+      <span><kbd>S</kbd> knippen op afspeelkop</span>
+      <span><kbd>E</kbd> selectie naar edit</span>
+      <span><kbd>A</kbd> crossfade beluisteren</span>
+      <span><kbd>Delete</kbd> clip verwijderen</span>
+      <span><kbd>←</kbd> <kbd>→</kbd> knip ±1 ms (Shift ±10 ms)</span>
+      <span><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> ongedaan maken</span>
+      <span><kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
+      <span>Ctrl/⌘ + scrollwiel: zoomen</span>
+      <span>Shift + scrollwiel: scrollen</span>
+      <span>Clip slepen: verplaatsen · randen: trimmen</span>
+      <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
+      <span>Crossfade slepen: knip verschuiven</span>
+      <span>Alt + crossfade slepen: lengte</span>
+    </div>
+  </div>`;
+}
+
+function inspectJunction(el, j) {
+  const ta = takeOf(j.a.takeId), tb = takeOf(j.b.takeId);
+  const shape = j.b.xShape || 'eqp';
+  el.innerHTML = `
+    <div class="insp-head"><h2>Crossfade</h2><span>${esc(ta.name)} → ${esc(tb.name)} · knip op ${fmt((j.s + j.e) / 2)}</span></div>
+    <canvas id="xfCanvas"></canvas>
+    <div class="row">
+      <label>Vorm <select id="xfShape">${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}"${k === shape ? ' selected' : ''}>${v.name}</option>`).join('')}</select></label>
+      <label>Lengte <input type="range" id="xfLenR" min="0" max="2000" step="1" value="${Math.min(2000, ms(j.len))}" style="width:180px"><input type="number" id="xfLen" min="0" max="20000" step="1" value="${ms(j.len)}"> ms</label>
+      <span class="group">Knip <button data-roll="-10">−10</button><button data-roll="-1">−1</button><button data-roll="1">+1</button><button data-roll="10">+10</button> ms</span>
+      <button id="xfAlign" title="Verschuift de inhoud van B een paar ms zodat de golfvormen in fase lopen — voorkomt holle of kamfilter-achtige overgangen">Fase uitlijnen</button>
+    </div>
+    <div class="row">
+      <button id="xfPlay" class="primary">${S.playing && S.playing.loop ? '■ Stop' : '▶ Beluister'} <kbd>A</kbd></button>
+      <label><input type="checkbox" id="xfLoop"${S.loopAudition ? ' checked' : ''}> Herhalen</label>
+      <label>Voor-/narol <input type="number" id="preroll" value="${S.preroll}" min="0.2" max="20" step="0.5"> s</label>
+      <span class="hint">Sleep in de figuur om het knippunt te verschuiven; Alt+slepen verschuift alleen de inhoud van B. Equal power is meestal het best tussen verschillende takes; lineair bij (bijna) identiek materiaal.</span>
+    </div>`;
+  const live = { undo: false };
+  const refresh = () => { S.dirty = true; drawXf(); };
+  $('xfShape').onchange = (e) => mutate(() => { j.b.xShape = e.target.value; });
+  $('xfLenR').oninput = (e) => {
+    if (!live.undo) { pushUndo(); live.undo = true; }
+    const got = setXfLen(j.a, j.b, +e.target.value / 1000);
+    $('xfLen').value = ms(got); refresh();
+  };
+  $('xfLenR').onchange = () => { live.undo = false; afterEdit(); };
+  $('xfLen').onchange = (e) => {
+    pushUndo();
+    const want = Math.max(0, +e.target.value) / 1000;
+    const got = setXfLen(j.a, j.b, want);
+    if (Math.abs(got - want) > 0.001) toast(`Maximaal ${ms(got)} ms mogelijk met het beschikbare bronmateriaal`);
+    afterEdit();
+  };
+  el.querySelectorAll('[data-roll]').forEach((b) => { b.onclick = () => mutate(() => roll(j.a, j.b, +b.dataset.roll / 1000)); });
+  $('xfAlign').onclick = () => phaseAlign(j);
+  $('xfPlay').onclick = () => { if (S.playing) { stop(); renderInspector(); } else { auditionJunction(); renderInspector(); } };
+  $('xfLoop').onchange = (e) => { S.loopAudition = e.target.checked; };
+  $('preroll').onchange = (e) => { S.preroll = clamp(+e.target.value || 2, 0.2, 20); };
+  bindXfCanvas(j);
+  requestAnimationFrame(drawXf);
+}
+
+function bindXfCanvas() {
+  const c = $('xfCanvas');
+  c.addEventListener('pointerdown', (e) => {
+    const s = S.sel; const j = s && junctionOf(s.a, s.b); if (!j) return;
+    c.setPointerCapture(e.pointerId);
+    S.drag = { xf: true, type: e.altKey ? 'slipB' : 'roll', x0: e.clientX, a: j.a, b: j.b, oa: { ...j.a }, ob: { ...j.b }, moved: false };
+  });
+  c.addEventListener('pointermove', (e) => {
+    const d = S.drag; if (!d || !d.xf) return;
+    const dx = e.clientX - d.x0;
+    if (!d.moved && Math.abs(dx) < 2) return;
+    if (!d.moved) { d.moved = true; pushUndo(); }
+    const dt = dx * S.xfView.spx;
+    Object.assign(d.a, d.oa); Object.assign(d.b, d.ob);
+    if (d.type === 'roll') roll(d.a, d.b, dt);           // knip volgt de muis
+    else {
+      const tb = takeOf(d.b.takeId);                     // inhoud van B volgt de muis
+      d.b.offset = clamp(d.ob.offset - dt, 0, tb.buffer.duration - d.b.dur);
+    }
+    S.dirty = true; drawXf();
+  });
+  const up = () => { const d = S.drag; if (!d || !d.xf) return; S.drag = null; if (d.moved) afterEdit(); };
+  c.addEventListener('pointerup', up);
+  c.addEventListener('pointercancel', up);
+}
+
+function inspectClip(el, c) {
+  const tk = takeOf(c.takeId);
+  const env = envelopes()[S.clips.indexOf(c)];
+  el.innerHTML = `
+    <div class="insp-head"><h2>Clip</h2><span>${esc(tk.name)} · ${fmt(c.start)} – ${fmt(end(c))}</span></div>
+    <div class="row">
+      <label>Take <select id="clTake">${S.takes.map((t) => `<option value="${t.id}"${t.id === tk.id ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+      <label>Gain <input type="range" id="clGainR" min="-24" max="12" step="0.1" value="${c.gain}" style="width:160px"><input type="number" id="clGain" min="-60" max="24" step="0.1" value="${c.gain.toFixed(1)}"> dB</label>
+      <label>Fade-in <input type="number" id="clFi" min="0" step="1" value="${ms(c.fadeIn)}"${env.finX ? ' disabled title="Deze kant is een crossfade"' : ''}> ms</label>
+      <label>Fade-out <input type="number" id="clFo" min="0" step="1" value="${ms(c.fadeOut)}"${env.foutX ? ' disabled title="Deze kant is een crossfade"' : ''}> ms</label>
+    </div>
+    <div class="row">
+      <div class="kv">
+        <span>Positie</span><b>${fmt(c.start)}</b>
+        <span>Lengte</span><b>${fmt(c.dur)}</b>
+        <span>Uit bron</span><b>${fmt(c.offset)} – ${fmt(c.offset + c.dur)}</b>
+      </div>
+    </div>
+    <div class="row">
+      <button id="clSplit">Knip op afspeelkop <kbd>S</kbd></button>
+      <button id="clPlay">▶ Speel vanaf clip</button>
+      <button id="clDel" class="danger">Verwijder clip</button>
+      <span class="hint">Wissel van take om dit stuk door dezelfde plek uit een andere take te vervangen (met crossfades). Alt+slepen verschuift de inhoud binnen de clip.</span>
+    </div>`;
+  $('clTake').onchange = (e) => swapTake(c, takeOf(+e.target.value));
+  const live = { undo: false };
+  $('clGainR').oninput = (e) => {
+    if (!live.undo) { pushUndo(); live.undo = true; }
+    c.gain = +e.target.value; $('clGain').value = c.gain.toFixed(1); S.dirty = true;
+  };
+  $('clGainR').onchange = () => { live.undo = false; afterEdit(); };
+  $('clGain').onchange = (e) => mutate(() => { c.gain = clamp(+e.target.value || 0, -60, 24); });
+  $('clFi').onchange = (e) => mutate(() => { c.fadeIn = Math.max(0, +e.target.value || 0) / 1000; });
+  $('clFo').onchange = (e) => mutate(() => { c.fadeOut = Math.max(0, +e.target.value || 0) / 1000; });
+  $('clSplit').onclick = () => splitAt(S.playhead);
+  $('clPlay').onclick = () => play(c.start);
+  $('clDel').onclick = deleteSelection;
+}
+
+function inspectTake(el, t) {
+  const r = S.range && S.range.takeId === t.id ? S.range : null;
+  const others = S.takes.filter((x) => x !== t);
+  const ra = r && Math.min(r.t0, r.t1), rb = r && Math.max(r.t0, r.t1);
+  el.innerHTML = `
+    <div class="insp-head"><h2>Take</h2><span>${t.buffer.numberOfChannels === 1 ? 'mono' : t.buffer.numberOfChannels === 2 ? 'stereo' : t.buffer.numberOfChannels + ' kanalen'} · ${t.buffer.sampleRate} Hz · ${fmt(t.buffer.duration)}</span></div>
+    ${r ? `<div class="row">
+      <b>Selectie ${fmt(ra)} – ${fmt(rb)} (${(rb - ra).toFixed(2)} s)</b>
+      <button id="tkComp" class="primary">Naar edit <kbd>E</kbd></button>
+      <button id="tkPlayR">▶ Beluister selectie</button>
+    </div>` : `<p class="hint">Sleep in deze take-baan om een stuk te selecteren dat je in de edit wilt plaatsen.</p>`}
+    <div class="row">
+      <label>Naam <input type="text" id="tkName" value="${esc(t.name)}"></label>
+      <label title="Positie van het begin van deze take op de tijdlijn">Sync <input type="number" id="tkSync" step="1" value="${ms(t.sync)}"> ms</label>
+      ${others.length ? `<span class="group">Auto-sync op <select id="tkRef">${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><button id="tkAuto">Uitlijnen</button></span>` : ''}
+    </div>
+    <div class="row">
+      <button id="tkWhole">Hele take in edit</button>
+      <button id="tkSolo">▶ Solo vanaf afspeelkop</button>
+      <button id="tkDel" class="danger">Verwijder take</button>
+      <span class="hint">Alt+sleep de take-baan om de sync handmatig te verschuiven.</span>
+    </div>`;
+  if (r) {
+    $('tkComp').onclick = compRange;
+    $('tkPlayR').onclick = () => playRange(t, ra, rb);
+  }
+  $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); };
+  $('tkSync').onchange = (e) => mutate(() => { t.sync = Math.max(0, (+e.target.value || 0) / 1000); });
+  if (others.length) $('tkAuto').onclick = () => { busy(true, 'Uitlijnen…'); setTimeout(() => { try { autoSync(t, takeOf(+$('tkRef').value)); } finally { busy(false); } }, 30); };
+  $('tkWhole').onclick = () => replaceRange(t, t.sync, t.sync + t.buffer.duration);
+  $('tkSolo').onclick = () => playTake(t, S.playhead);
+  $('tkDel').onclick = () => removeTake(t);
+}
+
+function compRange() {
+  const r = S.range; if (!r) return;
+  const t = takeOf(r.takeId); if (!t) return;
+  replaceRange(t, Math.min(r.t0, r.t1), Math.max(r.t0, r.t1));
+  S.range = null; S.dirty = true; updateButtons();
+}
+
+/* ---------- interactie tijdlijn ---------- */
+function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function laneAt(y) {
+  if (y < RULER) return { kind: 'ruler' };
+  if (y < RULER + EDIT_H) return { kind: 'edit' };
+  const k = Math.floor((y - RULER - EDIT_H) / TAKE_H);
+  const t = S.takes[k];
+  return t ? { kind: 'take', take: t } : { kind: 'none' };
+}
+function hitEdit(x) {
+  for (const j of junctions()) {
+    const xs = px(j.s), xe = px(j.e);
+    if (x >= xs - 5 && x <= xe + 5) return { type: 'junction', j };
+  }
+  for (let i = S.clips.length - 1; i >= 0; i--) {
+    const c = S.clips[i], xs = px(c.start), xe = px(end(c));
+    if (x >= xs - 4 && x <= xe + 4) {
+      if (xe - xs > 16 && x - xs < 6) return { type: 'trimL', c };
+      if (xe - xs > 16 && xe - x < 6) return { type: 'trimR', c };
+      if (x >= xs && x <= xe) return { type: 'body', c };
+    }
+  }
+  return null;
+}
+function snapT(t, exclude, shift) {
+  if (!S.snap || shift) return t;
+  const cands = [0, S.playhead];
+  S.clips.forEach((c) => { if (c !== exclude) cands.push(c.start, end(c)); });
+  let best = t, bd = 8 / S.pps;
+  for (const c of cands) { const d = Math.abs(c - t); if (d < bd) { bd = d; best = c; } }
+  return best;
+}
+
+cv.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  const { x, y } = pos(e);
+  cv.setPointerCapture(e.pointerId);
+  const t = tAt(x), lane = laneAt(y);
+  const d = { x0: x, moved: false, t0: t };
+  if (lane.kind === 'ruler' || lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
+  else if (lane.kind === 'edit') {
+    const h = hitEdit(x);
+    if (!h) { d.type = 'playhead'; S.playhead = Math.max(0, t); select(null); }
+    else if (h.type === 'junction') {
+      d.type = e.altKey ? 'xflen' : 'roll'; d.a = h.j.a; d.b = h.j.b; d.oa = { ...h.j.a }; d.ob = { ...h.j.b }; d.len = h.j.len;
+      select({ kind: 'junction', a: h.j.a.id, b: h.j.b.id });
+    } else {
+      d.type = h.type === 'body' ? (e.altKey ? 'slip' : 'move') : h.type;
+      d.c = h.c; d.o = { ...h.c };
+      if (!(S.sel && S.sel.kind === 'clip' && S.sel.id === h.c.id)) select({ kind: 'clip', id: h.c.id });
+    }
+  } else if (lane.kind === 'take') {
+    d.take = lane.take;
+    if (e.altKey) { d.type = 'sync'; d.os = lane.take.sync; }
+    else d.type = 'range';
+    if (!(S.sel && S.sel.kind === 'take' && S.sel.id === lane.take.id)) select({ kind: 'take', id: lane.take.id });
+  }
+  S.drag = d; S.dirty = true;
+});
+
+cv.addEventListener('pointermove', (e) => {
+  const { x, y } = pos(e);
+  const d = S.drag;
+  if (!d || d.xf) { hoverCursor(x, y, e.altKey); return; }
+  const dx = x - d.x0;
+  if (!d.moved && Math.abs(dx) < 3) return;
+  if (!d.moved) {
+    d.moved = true;
+    if (['move', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync'].includes(d.type)) pushUndo();
+  }
+  const dt = dx / S.pps, sh = e.shiftKey;
+  const c = d.c, o = d.o;
+  switch (d.type) {
+    case 'playhead': S.playhead = Math.max(0, tAt(x)); break;
+    case 'move': {
+      let ns = o.start + dt;
+      const a = snapT(ns, c, sh), b = snapT(ns + o.dur, c, sh) - o.dur;
+      ns = Math.abs(a - ns) <= Math.abs(b - ns) ? a : b;
+      c.start = Math.max(0, ns);
+      break;
+    }
+    case 'slip': {
+      const len = takeOf(c.takeId).buffer.duration;
+      c.offset = clamp(o.offset - dt, 0, len - c.dur);
+      break;
+    }
+    case 'trimL': {
+      let ns = snapT(o.start + dt, c, sh);
+      ns = clamp(ns, Math.max(0, o.start - o.offset), end(o) - MIN_DUR);
+      c.start = ns; c.offset = o.offset + (ns - o.start); c.dur = end(o) - ns;
+      break;
+    }
+    case 'trimR': {
+      const len = takeOf(c.takeId).buffer.duration;
+      let ne = snapT(end(o) + dt, c, sh);
+      ne = clamp(ne, o.start + MIN_DUR, o.start + (len - o.offset));
+      c.dur = ne - o.start;
+      break;
+    }
+    case 'roll':
+      Object.assign(d.a, d.oa); Object.assign(d.b, d.ob);
+      roll(d.a, d.b, dt);
+      break;
+    case 'xflen':
+      Object.assign(d.a, d.oa); Object.assign(d.b, d.ob);
+      setXfLen(d.a, d.b, Math.max(0, d.len + 2 * dt));
+      break;
+    case 'range': {
+      const tk = d.take;
+      const lo = tk.sync, hi = tk.sync + tk.buffer.duration;
+      S.range = { takeId: tk.id, t0: clamp(d.t0, lo, hi), t1: clamp(tAt(x), lo, hi) };
+      break;
+    }
+    case 'sync': {
+      let ns = Math.max(0, d.os + dt);
+      if (S.snap && !sh && Math.abs(ns) < 8 / S.pps) ns = 0;
+      d.take.sync = ns;
+      break;
+    }
+  }
+  S.dirty = true;
+  if (S.sel && S.sel.kind === 'junction') drawXf();
+});
+
+function endDrag(e) {
+  const d = S.drag;
+  if (!d || d.xf) return;
+  S.drag = null;
+  if (!d.moved) {
+    if (['move', 'slip', 'trimL', 'trimR', 'range'].includes(d.type)) S.playhead = Math.max(0, d.t0);
+    if (d.type === 'range') { S.range = null; renderInspector(); updateButtons(); }
+    if (S.playing && d.type !== 'roll' && d.type !== 'xflen') restartAtPlayhead();
+  } else if (d.type === 'range') {
+    if (S.range && Math.abs(S.range.t1 - S.range.t0) < 0.01) S.range = null;
+    renderInspector(); updateButtons();
+  } else if (d.type === 'playhead') {
+    if (S.playing) restartAtPlayhead();
+  } else afterEdit();
+  S.dirty = true;
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('dblclick', (e) => {
+  const { x, y } = pos(e);
+  if (laneAt(y).kind !== 'edit') return;
+  const h = hitEdit(x);
+  if (h && h.type === 'junction') auditionJunction();
+});
+
+function restartAtPlayhead() {
+  const p = S.playing; if (!p) return;
+  if (p.mode === 'take') playTake(takeOf(p.takeId), S.playhead);
+  else play(S.playhead);
+}
+
+function hoverCursor(x, y, alt) {
+  const lane = laneAt(y);
+  let cur = 'default';
+  if (lane.kind === 'ruler') cur = 'pointer';
+  else if (lane.kind === 'edit') {
+    const h = hitEdit(x);
+    if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'grab') : 'ew-resize';
+  } else if (lane.kind === 'take') cur = alt ? 'ew-resize' : 'text';
+  cv.style.cursor = cur;
+}
+
+cv.addEventListener('wheel', (e) => {
+  const { x } = pos(e);
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    zoomAt(x, Math.exp(-e.deltaY * 0.0025));
+  } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    e.preventDefault();
+    const d = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+    S.view = Math.max(0, S.view + d / S.pps);
+    S.dirty = true; updateScroll();
+  }
+}, { passive: false });
+
+function zoomAt(x, f) {
+  const t = tAt(x);
+  S.pps = clamp(S.pps * f, 0.5, 48000);
+  S.view = Math.max(0, t - x / S.pps);
+  S.dirty = true; updateScroll();
+}
+function zoomFit() {
+  S.pps = clamp((cssW - 24) / contentEnd(), 0.5, 48000);
+  S.view = 0; S.dirty = true; updateScroll();
+}
+function updateScroll() {
+  const sc = $('hscroll');
+  const span = cssW / S.pps;
+  const max = Math.max(0, contentEnd() + span * 0.3 - span);
+  sc.max = String(max); sc.step = String(Math.max(0.001, span / 200));
+  sc.value = String(Math.min(S.view, max));
+  sc.disabled = max <= 0;
+}
+$('hscroll').addEventListener('input', (e) => { S.view = +e.target.value; S.dirty = true; });
+
+/* ---------- toolbar + toetsen ---------- */
+$('importBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = (e) => { importFiles(e.target.files); e.target.value = ''; };
+$('demoBtn').onclick = makeDemo;
+$('playBtn').onclick = togglePlay;
+$('splitBtn').onclick = () => splitAt(S.playhead);
+$('compBtn').onclick = compRange;
+$('deleteBtn').onclick = deleteSelection;
+$('undoBtn').onclick = undo;
+$('redoBtn').onclick = redo;
+$('zoomIn').onclick = () => zoomAt(cssW / 2, 1.5);
+$('zoomOut').onclick = () => zoomAt(cssW / 2, 1 / 1.5);
+$('zoomFit').onclick = zoomFit;
+$('snapChk').onchange = (e) => { S.snap = e.target.checked; };
+$('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 1000; };
+$('exportBtn').onclick = exportWav;
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input[type=text], input[type=number], select, textarea')) {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  const k = e.key, mod = e.ctrlKey || e.metaKey;
+  if (k === ' ') { e.preventDefault(); if (e.target.blur) e.target.blur(); togglePlay(); return; }
+  if (mod && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && k.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod) return;
+  const sj = S.sel && S.sel.kind === 'junction' ? junctionOf(S.sel.a, S.sel.b) : null;
+  switch (k) {
+    case 's': case 'S': splitAt(S.playhead); break;
+    case 'e': case 'E': compRange(); break;
+    case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(); break;
+    case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
+    case '-': case '_': zoomAt(cssW / 2, 1 / 1.5); break;
+    case 'f': case 'F': zoomFit(); break;
+    case 'Home': S.playhead = 0; S.view = 0; S.dirty = true; updateScroll(); if (S.playing) restartAtPlayhead(); break;
+    case 'End': S.playhead = editEnd(); break;
+    case 'Escape': S.range = null; select(null); break;
+    case 'ArrowLeft': case 'ArrowRight': {
+      e.preventDefault();
+      const dir = k === 'ArrowLeft' ? -1 : 1;
+      if (sj) mutate(() => roll(sj.a, sj.b, dir * (e.shiftKey ? 0.01 : 0.001)));
+      else { S.playhead = Math.max(0, S.playhead + dir * (e.shiftKey ? 0.1 : 1)); if (S.playing) restartAtPlayhead(); }
+      break;
+    }
+  }
+});
+
+/* ---------- slepen & neerzetten ---------- */
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { dragDepth++; $('drop').classList.add('show'); e.preventDefault(); } });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('drop').classList.remove('show'); });
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => {
+  e.preventDefault(); dragDepth = 0; $('drop').classList.remove('show');
+  if (e.dataTransfer && e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
+});
+
+/* ---------- demo ---------- */
+function makeDemo() {
+  const ac = ensureAC();
+  const sr = ac.sampleRate, beat = 0.5, dur = 16 * beat * 2 + 1;
+  // Een melodie van 32 tellen; elke take heeft ergens een "fout" zodat comping zin heeft.
+  const mel = [64, 67, 69, 71, 72, 71, 69, 67, 65, 69, 72, 76, 74, 72, 71, 69, 67, 71, 74, 77, 76, 74, 72, 71, 69, 72, 71, 69, 67, 69, 71, 72];
+  const takes = [
+    { name: 'Demo take 1', bright: 0.5, wrong: { 9: 70, 10: 73 }, jitter: 0.012, level: 0.42, seed: 1 },
+    { name: 'Demo take 2', bright: 0.7, wrong: { 19: 78, 24: 68 }, jitter: 0.008, level: 0.36, seed: 2 },
+    { name: 'Demo take 3', bright: 0.35, wrong: { 3: 72, 28: 66 }, jitter: 0.015, level: 0.45, seed: 3 },
+  ];
+  busy(true, 'Demo genereren…');
+  setTimeout(() => {
+    for (const tk of takes) {
+      const n = Math.round(dur * sr);
+      const buf = ac.createBuffer(1, n, sr), d = buf.getChannelData(0);
+      let seed = tk.seed * 9301;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      mel.forEach((m, i) => {
+        const midi = tk.wrong[i] ?? m;
+        const f = 440 * Math.pow(2, (midi - 69) / 12) * (1 + (rnd() - 0.5) * 0.004);
+        const t0 = 0.5 + i * beat + (rnd() - 0.5) * 2 * tk.jitter;
+        const s0 = Math.round(t0 * sr), len = Math.round(beat * 1.6 * sr);
+        const vel = tk.level * (0.8 + rnd() * 0.3);
+        for (let k = 0; k < len && s0 + k < n; k++) {
+          const t = k / sr;
+          const env = Math.min(1, t / 0.006) * Math.exp(-t * 3.2);
+          let v = 0;
+          for (let h = 1; h <= 6; h++) v += Math.sin(2 * Math.PI * f * h * t) * Math.pow(tk.bright, h - 1) / h;
+          d[s0 + k] += v * env * vel;
+        }
+      });
+      // zachte ruimte/ruis zodat de takes niet digitaal stil zijn
+      for (let k = 0; k < n; k++) d[k] += (rnd() - 0.5) * 0.004;
+      addTake(tk.name, buf);
+    }
+    busy(false);
+    buildHeads(); zoomFit(); afterEdit();
+    toast('Demo geladen: take 1 staat in de edit. Selecteer in take 2 het stuk rond 0:05 en druk E.');
+  }, 30);
+}
+
+/* ---------- app: offline + installeren ---------- */
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  // Eigen service worker met scope ./ (alleen de editor), los van die van de Tuinplanner.
+  navigator.serviceWorker.register('sw.js', { scope: './' }).catch((err) => console.warn('Service worker niet geregistreerd:', err));
+}
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $('installBtn').hidden = false;
+});
+$('installBtn').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  $('installBtn').hidden = true;
+};
+window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; toast('Take Crossfader is geïnstalleerd'); });
+
+/* ---------- start ---------- */
+new ResizeObserver(() => resize()).observe($('canvasWrap'));
+buildHeads();
+renderInspector();
+updateButtons();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
