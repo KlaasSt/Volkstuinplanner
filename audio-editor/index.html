@@ -108,6 +108,8 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .hint { color: var(--muted); font-size: 12px; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; color: var(--muted); }
 .kv b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+body.aligning .timeline { max-height: 30vh; min-height: 150px; }
+#alCanvas { width: 100%; height: 352px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; }
 #xfCanvas { width: 100%; height: 240px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: col-resize; }
 .help { max-width: 860px; color: var(--muted); }
 .help h2 { color: var(--text); font-size: 15px; margin: 0 0 8px; }
@@ -155,6 +157,7 @@ kbd {
     <span class="sep"></span>
     <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
     <button id="compBtn" title="Geselecteerd stuk uit een take in de edit plaatsen (E)">Naar edit</button>
+    <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
     <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
     <button id="undoBtn" title="Ongedaan maken (Ctrl/⌘+Z)">↶</button>
     <button id="redoBtn" title="Opnieuw (Ctrl/⌘+Shift+Z)">↷</button>
@@ -224,7 +227,7 @@ const S = {
   sel: null, range: null,
   playing: null,
   undo: [], redo: [],
-  snap: true, defXf: 0.04, preroll: 2, loopAudition: false,
+  snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true,
   drag: null, dirty: true, xfView: null,
   meter: 0,
 };
@@ -543,28 +546,34 @@ function gapAt(t) {
   return { a, b: next.start, next };
 }
 
-/** Haal [t0,t1] uit de edit; alles erna schuift aan en de naad krijgt een standaard-crossfade. */
-function deleteRange(t0, t1) {
+/**
+ * Haal [t0,t1] uit de edit.
+ * ripple = true: alles erna schuift aan en de naad krijgt een standaard-crossfade.
+ * ripple = false: er blijft stilte over; de randen krijgen korte fades tegen klikjes.
+ */
+function deleteRange(t0, t1, ripple = true) {
   if (t1 - t0 < 0.005) return;
-  const d = t1 - t0;
+  const d = ripple ? t1 - t0 : 0;
   mutate(() => {
     const out = [];
     for (const c of S.clips) {
       const ce = end(c);
       if (ce <= t0 + 1e-9) { out.push(c); continue; }
       if (c.start >= t1 - 1e-9) { out.push({ ...c, start: c.start - d }); continue; }
-      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.005 });
-      if (ce > t1) out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t0, offset: c.offset + (t1 - c.start), dur: ce - t1, fadeIn: 0.005, xShape: 'eqp' });
+      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.01 });
+      if (ce > t1) out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t1 - d, offset: c.offset + (t1 - c.start), dur: ce - t1, fadeIn: 0.01, xShape: 'eqp' });
     }
     S.clips = out; normalize();
-    for (let i = 1; i < S.clips.length; i++) {
-      const a = S.clips[i - 1], b = S.clips[i];
-      if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
+    if (ripple) {
+      for (let i = 1; i < S.clips.length; i++) {
+        const a = S.clips[i - 1], b = S.clips[i];
+        if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
+      }
     }
     S.sel = null;
     S.playhead = Math.max(0, t0 - 1);
   });
-  toast(`${fmt(d, 2)} weggehaald; de rest is aangeschoven`);
+  toast(ripple ? `${fmt(t1 - t0, 2)} weggehaald; de rest is aangeschoven` : `${fmt(t1 - t0, 2)} weggehaald; er is stilte voor in de plaats gekomen`);
 }
 
 /** Schuif clip c en alles erna naar links, tot tegen de vorige clip (of 0:00). */
@@ -596,7 +605,7 @@ function swapTake(c, take) {
   });
 }
 
-function deleteSelection() {
+function deleteSelection(leaveGap = false) {
   const s = S.sel;
   if (!s) return;
   if (s.kind === 'clip') {
@@ -607,7 +616,7 @@ function deleteSelection() {
   } else if (s.kind === 'take') {
     const t = takeOf(s.id); if (t) removeTake(t);
   } else if (s.kind === 'erange') {
-    deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1));
+    deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1), !leaveGap);
   } else if (s.kind === 'gap') {
     const g = gapAt(s.t); if (g) closeGapBefore(g.next);
   }
@@ -644,6 +653,7 @@ function validateSel() {
   else if (s.kind === 'junction' && !junctionOf(s.a, s.b)) S.sel = null;
   else if (s.kind === 'take' && !takeOf(s.id)) S.sel = null;
   else if (s.kind === 'gap' && !gapAt(s.t)) S.sel = null;
+  else if (s.kind === 'align' && (!alignSrc(s, 'a') || !alignSrc(s, 'b'))) S.sel = null;
 }
 
 function afterEdit() {
@@ -922,7 +932,7 @@ function autoSync(take, ref) {
     for (let i = i0; i < i1; i++) { s += eb[i] * ea[i + L]; n++; }
     if (n > rate && s > bestScore) { bestScore = s; best = L; }
   }
-  mutate(() => { take.sync = Math.max(0, ref.sync + best / rate); });
+  mutate(() => { setTakeSync(take, ref.sync + best / rate); });
   toast(`"${take.name}" uitgelijnd op "${ref.name}": sync ${ms(take.sync)} ms`);
 }
 
@@ -1149,6 +1159,7 @@ function frame() {
       }
     }
     S.playhead = t;
+    if (S.sel && S.sel.kind === 'align') drawAlign();
     // volgen
     const x = px(t);
     if (!S.drag && (x > cssW - 30 || x < 0)) { S.view = Math.max(0, t - 30 / S.pps); S.dirty = true; updateScroll(); }
@@ -1313,23 +1324,29 @@ function updateButtons() {
 function renderInspector() {
   const el = $('inspector');
   const s = S.sel;
+  document.body.classList.toggle('aligning', !!(s && s.kind === 'align'));
   if (s && s.kind === 'junction') {
     const j = junctionOf(s.a, s.b);
     if (j) return inspectJunction(el, j);
   }
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
+  if (s && s.kind === 'align') return inspectAlign(el, s);
   if (s && s.kind === 'erange') {
     const a = Math.min(s.t0, s.t1), b = Math.max(s.t0, s.t1);
     el.innerHTML = `
       <div class="insp-head"><h2>Selectie in de edit</h2><span>${fmt(a)} – ${fmt(b)} · ${fmt(b - a, 2)}</span></div>
       <div class="row">
-        <button id="erDel" class="primary">Weghalen <kbd>Delete</kbd></button>
+        <button id="erDel" class="primary" title="Alles erna schuift aan; de naad krijgt een crossfade">Weghalen en aanschuiven <kbd>Delete</kbd></button>
+        <button id="erGap" title="Het stuk wordt stilte; alles erna blijft op zijn plek">Weghalen, gat laten <kbd>⌥</kbd>+<kbd>Delete</kbd></button>
+      </div>
+      <div class="row">
         <button id="erPlay">▶ Beluister selectie</button>
         <button id="erPreview">▶ Beluister zonder dit stuk</button>
-        <span class="hint">Weghalen knipt dit stuk eruit; alles erna schuift aan en de naad krijgt een crossfade van ${ms(S.defXf)} ms. Ongedaan maken met ⌘Z.</span>
+        <span class="hint"><b>Aanschuiven</b>: de edit wordt korter en de naad krijgt een crossfade van ${ms(S.defXf)} ms. <b>Gat laten</b>: er komt stilte voor in de plaats, met korte fades aan de randen. Ongedaan maken met ⌘Z.</span>
       </div>`;
-    $('erDel').onclick = () => deleteRange(a, b);
+    $('erDel').onclick = () => deleteRange(a, b, true);
+    $('erGap').onclick = () => deleteRange(a, b, false);
     $('erPlay').onclick = () => play(a, b);
     $('erPreview').onclick = () => {
       // speel 2 s voor de selectie, en ga dan verder vanaf het eind (zoals het na weghalen zou klinken, zonder crossfade)
@@ -1377,6 +1394,8 @@ function renderInspector() {
       <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
+      <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
+      <span><b>Uitlijnen</b> (werkbalk): twee takes tot op de sample t.o.v. elkaar verschuiven</span>
       <span>Klik op stilte in de edit + <kbd>Delete</kbd>: gat dichten, alles erna schuift op</span>
       <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
       <span>Crossfade slepen: knip verschuiven</span>
@@ -1396,6 +1415,7 @@ function inspectJunction(el, j) {
       <label>Lengte <input type="range" id="xfLenR" min="0" max="2000" step="1" value="${Math.min(2000, ms(j.len))}" style="width:180px"><input type="number" id="xfLen" min="0" max="20000" step="1" value="${ms(j.len)}"> ms</label>
       <span class="group">Knip <button data-roll="-10">−10</button><button data-roll="-1">−1</button><button data-roll="1">+1</button><button data-roll="10">+10</button> ms</span>
       <button id="xfAlign" title="Verschuift de inhoud van B een paar ms zodat de golfvormen in fase lopen — voorkomt holle of kamfilter-achtige overgangen">Fase uitlijnen</button>
+      <button id="xfDetail" title="Beide kanten groot onder en over elkaar, met zoom tot op de sample">Uitlijnen in detail…</button>
     </div>
     <div class="row">
       <button id="xfPlay" class="primary">${S.playing && S.playing.loop ? '■ Stop' : '▶ Beluister'} <kbd>A</kbd></button>
@@ -1421,6 +1441,7 @@ function inspectJunction(el, j) {
   };
   el.querySelectorAll('[data-roll]').forEach((b) => { b.onclick = () => mutate(() => roll(j.a, j.b, +b.dataset.roll / 1000)); });
   $('xfAlign').onclick = () => phaseAlign(j);
+  $('xfDetail').onclick = openAlign;
   $('xfPlay').onclick = () => { if (S.playing) { stop(); renderInspector(); } else { auditionJunction(); renderInspector(); } };
   $('xfLoop').onchange = (e) => { S.loopAudition = e.target.checked; };
   $('preroll').onchange = (e) => { S.preroll = clamp(+e.target.value || 2, 0.2, 20); };
@@ -1492,7 +1513,7 @@ function inspectClip(el, c) {
   $('clSplit').onclick = () => splitAt(S.playhead);
   $('clGap').onclick = () => closeGapBefore(c);
   $('clPlay').onclick = () => play(c.start);
-  $('clDel').onclick = deleteSelection;
+  $('clDel').onclick = () => deleteSelection();
 }
 
 function inspectTake(el, t) {
@@ -1512,6 +1533,7 @@ function inspectTake(el, t) {
       ${others.length ? `<span class="group">Auto-sync op <select id="tkRef">${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><button id="tkAuto">Uitlijnen</button></span>` : ''}
     </div>
     <div class="row">
+      <button id="tkAlignWin" title="Deze take en een andere onder en over elkaar, met zoom tot op de sample">Uitlijnvenster…</button>
       <button id="tkWhole">Hele take in edit</button>
       <button id="tkSolo">▶ Solo vanaf afspeelkop</button>
       <button id="tkDel" class="danger">Verwijder take</button>
@@ -1522,9 +1544,10 @@ function inspectTake(el, t) {
     $('tkPlayR').onclick = () => playRange(t, ra, rb);
   }
   $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); };
-  $('tkSync').onchange = (e) => mutate(() => { t.sync = Math.max(0, (+e.target.value || 0) / 1000); });
+  $('tkSync').onchange = (e) => mutate(() => { setTakeSync(t, (+e.target.value || 0) / 1000); });
   if (others.length) $('tkAuto').onclick = () => { busy(true, 'Uitlijnen…'); setTimeout(() => { try { autoSync(t, takeOf(+$('tkRef').value)); } finally { busy(false); } }, 30); };
   $('tkWhole').onclick = () => replaceRange(t, t.sync, t.sync + t.buffer.duration);
+  $('tkAlignWin').onclick = openAlign;
   $('tkSolo').onclick = () => playTake(t, S.playhead);
   $('tkDel').onclick = () => removeTake(t);
 }
@@ -1534,6 +1557,337 @@ function compRange() {
   const t = takeOf(r.takeId); if (!t) return;
   replaceRange(t, Math.min(r.t0, r.t1), Math.max(r.t0, r.t1));
   S.range = null; S.dirty = true; updateButtons();
+}
+
+/* ---------- uitlijnvenster ----------
+   Twee bronnen (twee takes, of de twee clips van een crossfade) onder elkaar en over elkaar,
+   met een eigen zoom tot op sample-niveau. B verschuift: bij takes de sync (clips in de edit
+   schuiven mee), bij een crossfade de inhoud van clip B (slip). */
+
+/** Verschuif de sync van een take; clips uit die take in de edit houden dezelfde muziek op dezelfde plek. */
+function setTakeSync(t, ns) {
+  const dt = ns - t.sync;
+  t.sync = ns;
+  if (!S.syncClips || !dt) return;
+  const len = t.buffer.duration;
+  for (const c of S.clips) if (c.takeId === t.id) c.offset = clamp(c.offset - dt, 0, Math.max(0, len - c.dur));
+}
+
+function alignSrc(s, which) {
+  const id = s[which];
+  if (s.mode === 'takes') { const t = takeOf(id); return t ? { take: t, base: t.sync } : null; }
+  const c = clipOf(id); if (!c) return null;
+  return { take: takeOf(c.takeId), base: c.start - c.offset, clip: c };
+}
+
+function sampleAt(take, st) {
+  const sr = take.buffer.sampleRate, x = st * sr, i = Math.floor(x), f = x - i, d = take.data;
+  if (i < 0 || i + 1 >= d[0].length) return 0;
+  let a = 0, b = 0;
+  for (const ch of d) { a += ch[i]; b += ch[i + 1]; }
+  return (a + (b - a) * f) / d.length;
+}
+
+function openAlign() {
+  const s = S.sel, W = Math.max(300, cssW);
+  let al = null;
+  if (s && s.kind === 'junction') {
+    const j = junctionOf(s.a, s.b);
+    if (j) { const c = (j.s + j.e) / 2, span = Math.max(0.05, (j.e - j.s) * 1.5); al = { mode: 'clips', a: j.a.id, b: j.b.id, t0: c - span / 2, spx: span / W }; }
+  }
+  if (!al) {
+    if (S.takes.length < 2) { toast('Voor uitlijnen zijn minstens twee takes nodig'); return; }
+    // B = de geselecteerde take (die verschuift); A = de take die in de edit onder de afspeelkop klinkt.
+    const under = S.clips.find((c) => c.start <= S.playhead && end(c) > S.playhead);
+    const b = s && s.kind === 'take' ? s.id : S.takes[S.takes.length - 1].id;
+    const a = under && under.takeId !== b ? under.takeId : S.takes.find((t) => t.id !== b).id;
+    al = { mode: 'takes', a, b, t0: S.playhead - 0.1, spx: 0.2 / W };
+  }
+  select({ kind: 'align', gain: 1, ...al });
+}
+
+function alignOffset(s) {
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b');
+  return A && B ? B.base - A.base : 0;
+}
+function updateAlignInfo() {
+  const el = $('alOff'), s = S.sel;
+  if (!el || !s || s.kind !== 'align') return;
+  const d = alignOffset(s), sr = alignSrc(s, 'a').take.buffer.sampleRate;
+  el.textContent = s.mode === 'takes'
+    ? `B staat ${d >= 0 ? '+' : '−'}${Math.abs(d * 1000).toFixed(3)} ms (${Math.round(Math.abs(d) * sr)} samples) ${d >= 0 ? 'later' : 'eerder'} dan A`
+    : `Inhoud van B verschoven: ${d >= 0 ? '+' : '−'}${Math.abs(d * 1000).toFixed(3)} ms t.o.v. A`;
+}
+
+function nudgeAlign(dt) {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  const B = alignSrc(s, 'b'); if (!B) return;
+  mutate(() => {
+    if (s.mode === 'takes') setTakeSync(B.take, B.take.sync + dt);
+    else B.clip.offset = clamp(B.clip.offset - dt, 0, Math.max(0, B.take.buffer.duration - B.clip.dur));
+  });
+}
+
+/** Zoek binnen het beeld de verschuiving van B (max ±20 ms) waarbij de golfvormen het best overlappen. */
+function alignFine() {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b'), sr = A.take.buffer.sampleRate;
+  const W = $('alCanvas') ? $('alCanvas').clientWidth : cssW;
+  const c = s.t0 + (W * s.spx) / 2, half = clamp((W * s.spx) / 2, 0.01, 0.25);
+  const w0 = c - half, N = Math.round(2 * half * sr);
+  const maxLag = Math.round(clamp(half, 0.002, 0.02) * sr);
+  const a = new Float32Array(N), b = new Float32Array(N + 2 * maxLag);
+  for (let k = 0; k < N; k++) a[k] = sampleAt(A.take, w0 + k / sr - A.base);
+  for (let k = 0; k < b.length; k++) b[k] = sampleAt(B.take, w0 + (k - maxLag) / sr - B.base);
+  let ea = 0; for (let k = 0; k < N; k++) ea += a[k] * a[k];
+  if (ea < 1e-9) { toast('Te stil in beeld om uit te lijnen'); return; }
+  let best = 0, bestScore = -Infinity;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let dot = 0, eb = 0;
+    const o = lag + maxLag;
+    for (let k = 0; k < N; k++) { const y = b[k + o]; dot += a[k] * y; eb += y * y; }
+    const sc = eb > 1e-12 ? dot / Math.sqrt(ea * eb) : -Infinity;
+    if (sc > bestScore) { bestScore = sc; best = lag; }
+  }
+  nudgeAlign(-best / sr);
+  toast(`B ${best > 0 ? 'eerder' : best < 0 ? 'later' : 'niet'} gezet${best ? ': ' + (Math.abs(best) / sr * 1000).toFixed(3) + ' ms' : ''} · overeenkomst ${(bestScore * 100).toFixed(0)}%`);
+}
+
+function playAlign(which) {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  stopSources();
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  const list = (which === 'ab' ? ['a', 'b'] : [which]).map((w) => alignSrc(s, w)).filter(Boolean);
+  const from = Math.max(Math.min(...list.map((x) => x.base)), s.t0 - 0.5);
+  const to = Math.max(...list.map((x) => x.base + x.take.buffer.duration));
+  const when = ac.currentTime + 0.06, srcs = [];
+  for (const x of list) {
+    const src = ac.createBufferSource(); src.buffer = x.take.buffer;
+    const gn = ac.createGain(); gn.gain.value = which === 'ab' ? 0.6 : 1;
+    src.connect(gn); gn.connect(S.master);
+    src.start(when + Math.max(0, x.base - from), Math.max(0, from - x.base));
+    srcs.push(src);
+  }
+  S.playing = { mode: 'align', srcs, from, to, when, loop: null };
+  S.playhead = from;
+  updatePlayBtn();
+}
+
+const AL = { RULER: 18, ROW: 88, OVER: 128 };
+function alignRows() {
+  const a = AL.RULER + 4, b = a + AL.ROW + 6, o = b + AL.ROW + 6;
+  return { a, b, o, h: o + AL.OVER + 4 };
+}
+
+function drawAlignTrack(g, src, y, h, W, s, color, alpha) {
+  const mid = y + h / 2, half = h / 2 - 4, take = src.take, sr = take.buffer.sampleRate, sppS = s.spx * sr, dur = take.buffer.duration;
+  g.globalAlpha = alpha;
+  if (sppS < 5) {
+    g.strokeStyle = color; g.lineWidth = 1.6; g.beginPath();
+    let on = false;
+    for (let x = 0; x <= W; x++) {
+      const st = s.t0 + x * s.spx - src.base;
+      if (st < 0 || st > dur) { on = false; continue; }
+      const yy = mid - clamp(sampleAt(take, st) * s.gain, -1, 1) * half;
+      if (on) g.lineTo(x, yy); else { g.moveTo(x, yy); on = true; }
+    }
+    g.stroke();
+    if (sppS < 0.25) {                       // ver ingezoomd: elk sample als puntje
+      g.fillStyle = color;
+      const k0 = Math.ceil((s.t0 - src.base) * sr), k1 = Math.floor((s.t0 + W * s.spx - src.base) * sr);
+      for (let k = Math.max(0, k0); k <= k1 && k < take.data[0].length; k++) {
+        let v = 0; for (const ch of take.data) v += ch[k]; v /= take.data.length;
+        const x = (k / sr + src.base - s.t0) / s.spx;
+        g.fillRect(x - 1.5, mid - clamp(v * s.gain, -1, 1) * half - 1.5, 3, 3);
+      }
+    }
+  } else if (sppS < PEAK_BLOCK) {
+    // echte min/max per pixel (zonder de nullijn mee te nemen), zodat de golfvorm niet blokkerig wordt
+    g.fillStyle = color;
+    const d = take.data, n = d[0].length, nc = d.length;
+    for (let x = 0; x < W; x++) {
+      const a = Math.max(0, Math.floor((s.t0 + x * s.spx - src.base) * sr));
+      const b = Math.min(n, Math.ceil((s.t0 + (x + 1) * s.spx - src.base) * sr) + 1);
+      if (b <= a) continue;
+      let lo = Infinity, hi = -Infinity;
+      for (let k = a; k < b; k++) { let v = 0; for (const ch of d) v += ch[k]; v /= nc; if (v < lo) lo = v; if (v > hi) hi = v; }
+      lo = clamp(lo * s.gain, -1, 1); hi = clamp(hi * s.gain, -1, 1);
+      g.fillRect(x, mid - hi * half, 1, Math.max(1, (hi - lo) * half));
+    }
+  } else {
+    g.fillStyle = color;
+    drawWave(g, take, src.base, 0, W, (x) => s.t0 + x * s.spx, s.spx, mid, half, () => s.gain);
+  }
+  g.globalAlpha = 1;
+}
+
+function drawAlign() {
+  const c = $('alCanvas'), s = S.sel;
+  if (!c || !s || s.kind !== 'align') return;
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b');
+  if (!A || !B) return;
+  const W = c.clientWidth, R = alignRows(), H = R.h;
+  if (c.style.height !== H + 'px') c.style.height = H + 'px';
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const xOf = (t) => (t - s.t0) / s.spx;
+  // liniaal
+  const raw = 90 * s.spx, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map((m) => m * p10).find((v) => v >= raw);
+  const dec = clamp(Math.ceil(-Math.log10(step)), 0, 6);
+  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  for (let t = Math.ceil(s.t0 / step) * step; t < s.t0 + W * s.spx; t += step) {
+    const x = Math.round(xOf(t)) + 0.5;
+    g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(x, AL.RULER, 1, H - AL.RULER);
+    g.fillStyle = '#8b93a1'; g.fillText(fmt(t, Math.max(3, dec)), x + 3, 3);
+  }
+  const rows = [[R.a, AL.ROW, 'A · ' + A.take.name, A], [R.b, AL.ROW, 'B · ' + B.take.name, B], [R.o, AL.OVER, 'A + B over elkaar', null]];
+  for (const [y, h, label, src] of rows) {
+    g.fillStyle = '#14171c'; g.fillRect(0, y, W, h);
+    g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, y + h / 2, W, 1);
+    if (src && src.clip) {                                   // buiten de clip: gedimd
+      g.fillStyle = 'rgba(255,255,255,0.05)';
+      const x0 = clamp(xOf(src.clip.start), 0, W), x1 = clamp(xOf(end(src.clip)), 0, W);
+      g.fillRect(x0, y, x1 - x0, h);
+    }
+    if (src) drawAlignTrack(g, src, y, h, W, s, src.take.color, 1);
+    else {
+      drawAlignTrack(g, A, y, h, W, s, A.take.color, 0.75);
+      drawAlignTrack(g, B, y, h, W, s, B.take.color === A.take.color ? '#ffffff' : B.take.color, 0.75);
+    }
+    g.fillStyle = '#c9ced8'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'top';
+    g.fillText(label, 6, y + 4);
+  }
+  if (s.mode === 'clips') {
+    const j = junctionOf(s.a, s.b);
+    if (j) { g.fillStyle = 'rgba(255,211,42,0.7)'; g.fillRect(Math.round(xOf(j.s)), AL.RULER, 1, H); g.fillRect(Math.round(xOf(j.e)), AL.RULER, 1, H); }
+  }
+  const ph = xOf(S.playhead);
+  if (ph >= 0 && ph <= W) { g.fillStyle = '#ff5c6c'; g.fillRect(Math.round(ph), 0, 1.5, H); }
+  const sr = A.take.buffer.sampleRate;
+  g.fillStyle = '#8b93a1'; g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = '10px system-ui, sans-serif';
+  const span = W * s.spx;
+  g.fillText(`beeld ${span < 1 ? (span * 1000).toFixed(span < 0.01 ? 2 : 0) + ' ms' : span.toFixed(2) + ' s'} · ${(1 / (s.spx * sr)).toFixed(s.spx * sr < 1 ? 1 : 3)} px per sample`, W - 6, H - 4);
+  g.textAlign = 'left';
+}
+
+function zoomAlign(x, f) {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  const A = alignSrc(s, 'a'); if (!A) return;
+  const W = $('alCanvas').clientWidth, sr = A.take.buffer.sampleRate;
+  const t = s.t0 + x * s.spx;
+  s.spx = clamp(s.spx / f, 1 / (sr * 40), Math.max(1, contentEnd()) / W);
+  s.t0 = t - x * s.spx;
+  drawAlign();
+}
+
+function bindAlignCanvas() {
+  const c = $('alCanvas');
+  let drag = null;
+  const rowAt = (y) => { const R = alignRows(); return y < R.b - 3 ? 'a' : 'b'; };
+  c.addEventListener('pointerdown', (e) => {
+    const s = S.sel; if (!s || s.kind !== 'align') return;
+    const r = c.getBoundingClientRect(), y = e.clientY - r.top;
+    const B = alignSrc(s, 'b'); if (!B) return;
+    c.setPointerCapture(e.pointerId);
+    drag = { kind: rowAt(y) === 'a' ? 'pan' : 'shift', x0: e.clientX, t00: s.t0, moved: false, xr: e.clientX - r.left,
+      orig: s.mode === 'takes' ? B.take.sync : B.clip.offset };
+  });
+  c.addEventListener('pointermove', (e) => {
+    const s = S.sel;
+    if (!drag) { const r = c.getBoundingClientRect(); c.style.cursor = rowAt(e.clientY - r.top) === 'a' ? 'grab' : 'ew-resize'; return; }
+    const dx = e.clientX - drag.x0;
+    if (!drag.moved && Math.abs(dx) < 2) return;
+    if (!drag.moved) { drag.moved = true; if (drag.kind === 'shift') pushUndo(); }
+    if (drag.kind === 'pan') s.t0 = drag.t00 - dx * s.spx;
+    else {
+      const B = alignSrc(s, 'b'), dt = dx * s.spx;
+      if (s.mode === 'takes') B.take.sync = drag.orig + dt;
+      else B.clip.offset = clamp(drag.orig - dt, 0, Math.max(0, B.take.buffer.duration - B.clip.dur));
+      S.dirty = true; updateAlignInfo();
+    }
+    drawAlign();
+  });
+  const up = () => {
+    const d = drag; drag = null; if (!d) return;
+    const s = S.sel; if (!s || s.kind !== 'align') return;
+    if (d.kind === 'shift' && d.moved) {
+      if (s.mode === 'takes') { const t = alignSrc(s, 'b').take, ns = t.sync; t.sync = d.orig; setTakeSync(t, ns); }
+      afterEdit();
+    } else if (!d.moved) { S.playhead = s.t0 + d.xr * s.spx; drawAlign(); }
+  };
+  c.addEventListener('pointerup', up);
+  c.addEventListener('pointercancel', up);
+  c.addEventListener('wheel', (e) => {
+    const s = S.sel; if (!s || s.kind !== 'align') return;
+    const r = c.getBoundingClientRect(), x = e.clientX - r.left;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAlign(x, Math.exp(-e.deltaY * 0.0025)); }
+    else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault(); s.t0 += (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * s.spx; drawAlign();
+    }
+  }, { passive: false });
+  let gs = 1;
+  c.addEventListener('gesturestart', (e) => { e.preventDefault(); gs = 1; });
+  c.addEventListener('gesturechange', (e) => { e.preventDefault(); const r = c.getBoundingClientRect(); zoomAlign(e.clientX - r.left, e.scale / gs); gs = e.scale; });
+  c.addEventListener('gestureend', (e) => e.preventDefault());
+}
+
+function inspectAlign(el, s) {
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b');
+  const opts = (sel) => S.takes.map((t) => `<option value="${t.id}"${t.id === sel ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  el.innerHTML = `
+    <div class="insp-head"><h2>Uitlijnen</h2><span>${s.mode === 'takes'
+      ? 'Takes t.o.v. elkaar verschuiven'
+      : `Crossfade ${esc(A.take.name)} → ${esc(B.take.name)}: de inhoud van clip B verschuift (slip)`}</span></div>
+    ${s.mode === 'takes' ? `<div class="row">
+      <label>A (referentie) <select id="alA">${opts(s.a)}</select></label>
+      <label>B (verschuiven) <select id="alB">${opts(s.b)}</select></label>
+      <label title="Clips uit take B die al in de edit staan, houden dezelfde muziek op dezelfde plek"><input type="checkbox" id="alFollow"${S.syncClips ? ' checked' : ''}> Clips in de edit schuiven mee</label>
+    </div>` : ''}
+    <canvas id="alCanvas"></canvas>
+    <div class="row">
+      <span class="group">Zoom <button id="alZo">−</button><button id="alZi">+</button><button id="alZs" title="Zo ver inzoomen dat je losse samples ziet">Samples</button></span>
+      <label>Hoogte <select id="alGain">${[1, 2, 4, 8, 16, 32].map((v) => `<option value="${v}"${v === s.gain ? ' selected' : ''}>${v}×</option>`).join('')}</select></label>
+      <span class="group">B <button data-n="-0.01">−10 ms</button><button data-n="-0.001">−1 ms</button><button data-n="-1s">−1 sample</button><button data-n="1s">+1 sample</button><button data-n="0.001">+1 ms</button><button data-n="0.01">+10 ms</button></span>
+    </div>
+    <div class="row"><b id="alOff"></b></div>
+    <div class="row">
+      <button id="alFine" class="primary" title="Zoekt binnen wat je nu ziet (max ±20 ms) de beste overlap">Automatisch (in beeld)</button>
+      ${s.mode === 'takes' ? '<button id="alCoarse" title="Zoekt over de hele take (max ±10 s) waar de inzetten overeenkomen">Automatisch (hele take, grof)</button>' : ''}
+      <span class="group"><button id="alPA">▶ A</button><button id="alPB">▶ B</button><button id="alPAB" title="Beide tegelijk: hoe beter uitgelijnd, hoe voller en minder zwiepend het klinkt">▶ A + B samen</button></span>
+      <button id="alClose">Sluiten</button>
+    </div>
+    <p class="hint">Sleep in rij <b>B</b> of in de onderste rij om B te verschuiven. Sleep in rij <b>A</b> of veeg met twee vingers om door de tijd te schuiven; knijp (of ⌘ + twee vingers) om te zoomen. Pijltjes ←/→ verschuiven B 1 ms, met Shift 10 ms, met ⌥ 1 sample.${s.mode === 'clips' ? ' Lichte vlakken = het deel van de clip dat in de edit klinkt; gele lijnen = de crossfade.' : ''}</p>`;
+  if (s.mode === 'takes') {
+    const pick = (which, other) => (e) => {
+      s[which] = +e.target.value;
+      if (s[which] === s[other]) s[other] = S.takes.find((t) => t.id !== s[which]).id;
+      renderInspector();
+    };
+    $('alA').onchange = pick('a', 'b');
+    $('alB').onchange = pick('b', 'a');
+    $('alFollow').onchange = (e) => { S.syncClips = e.target.checked; };
+    $('alCoarse').onclick = () => { busy(true, 'Uitlijnen…'); setTimeout(() => { try { autoSync(B.take, A.take); } finally { busy(false); } }, 30); };
+  }
+  const cvW = () => $('alCanvas').clientWidth;
+  $('alZo').onclick = () => zoomAlign(cvW() / 2, 1 / 2);
+  $('alZi').onclick = () => zoomAlign(cvW() / 2, 2);
+  $('alZs').onclick = () => zoomAlign(cvW() / 2, s.spx * A.take.buffer.sampleRate * 8);
+  $('alGain').onchange = (e) => { s.gain = +e.target.value; drawAlign(); };
+  const sr = A.take.buffer.sampleRate;
+  el.querySelectorAll('[data-n]').forEach((b) => {
+    b.onclick = () => { const v = b.dataset.n; nudgeAlign(v.endsWith('s') ? parseFloat(v) / sr : +v); };
+  });
+  $('alFine').onclick = alignFine;
+  $('alPA').onclick = () => playAlign('a');
+  $('alPB').onclick = () => playAlign('b');
+  $('alPAB').onclick = () => playAlign('ab');
+  $('alClose').onclick = () => select(null);
+  bindAlignCanvas();
+  updateAlignInfo();
+  requestAnimationFrame(drawAlign);
 }
 
 /* ---------- interactie tijdlijn ---------- */
@@ -1663,7 +2017,7 @@ cv.addEventListener('pointermove', (e) => {
       break;
     }
     case 'sync': {
-      let ns = Math.max(0, d.os + dt);
+      let ns = d.os + dt;
       if (S.snap && !sh && Math.abs(ns) < 8 / S.pps) ns = 0;
       d.take.sync = ns;
       break;
@@ -1706,6 +2060,7 @@ function endDrag(e) {
     if (S.playing) restartAtPlayhead();
   } else {
     if (d.type === 'move') resolveDrop(d.c, !!(e && (e.metaKey || e.ctrlKey)));
+    if (d.type === 'sync') { const ns = d.take.sync; d.take.sync = d.os; setTakeSync(d.take, ns); }
     afterEdit();
   }
   S.dirty = true;
@@ -1721,7 +2076,8 @@ cv.addEventListener('dblclick', (e) => {
 
 function restartAtPlayhead() {
   const p = S.playing; if (!p) return;
-  if (p.mode === 'take') playTake(takeOf(p.takeId), S.playhead);
+  if (p.mode === 'align') stop();
+  else if (p.mode === 'take') playTake(takeOf(p.takeId), S.playhead);
   else play(S.playhead);
 }
 
@@ -1791,7 +2147,8 @@ $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
 $('compBtn').onclick = compRange;
-$('deleteBtn').onclick = deleteSelection;
+$('alignBtn').onclick = openAlign;
+$('deleteBtn').onclick = () => deleteSelection();
 $('undoBtn').onclick = undo;
 $('redoBtn').onclick = redo;
 $('zoomIn').onclick = () => zoomAt(cssW / 2, 1.5);
@@ -1820,7 +2177,7 @@ document.addEventListener('keydown', (e) => {
     case 's': case 'S': splitAt(S.playhead); break;
     case 'e': case 'E': compRange(); break;
     case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
-    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(e.altKey); break;
     case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
     case '-': case '_': zoomAt(cssW / 2, 1 / 1.5); break;
     case 'f': case 'F': zoomFit(); break;
@@ -1830,7 +2187,10 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowLeft': case 'ArrowRight': {
       e.preventDefault();
       const dir = k === 'ArrowLeft' ? -1 : 1;
-      if (sj) mutate(() => roll(sj.a, sj.b, dir * (e.shiftKey ? 0.01 : 0.001)));
+      if (S.sel && S.sel.kind === 'align') {
+        const sr = S.ac ? S.ac.sampleRate : 48000;
+        nudgeAlign(dir * (e.altKey ? 1 / sr : e.shiftKey ? 0.01 : 0.001));
+      } else if (sj) mutate(() => roll(sj.a, sj.b, dir * (e.shiftKey ? 0.01 : 0.001)));
       else { S.playhead = Math.max(0, S.playhead + dir * (e.shiftKey ? 0.1 : 1)); if (S.playing) restartAtPlayhead(); }
       break;
     }
