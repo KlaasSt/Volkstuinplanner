@@ -1045,6 +1045,36 @@ async function encodeMp3(buf, kbps) {
   return new Blob(parts, { type: 'audio/mpeg' });
 }
 
+/* ---------- opslaan als ----------
+   In Chrome/Edge: een echt 'Opslaan als'-venster (map en naam kiezen; Chrome onthoudt de laatst gebruikte map).
+   Elders (Safari, Firefox): een gewone download naar de downloadmap.
+   Het venster moet direct na de klik openen, dus eerst kiezen, dan pas rekenen. */
+const SAVE_TYPES = {
+  wav: { description: 'WAV-audio', accept: { 'audio/wav': ['.wav'] } },
+  mp3: { description: 'MP3-audio', accept: { 'audio/mpeg': ['.mp3'] } },
+  crossfader: { description: 'Take Crossfader-project', accept: { 'application/octet-stream': ['.crossfader'] } },
+};
+const canSaveAs = () => typeof window.showSaveFilePicker === 'function' && window.self === window.top;
+/** Vraag waar het bestand moet komen. Geeft { handle } of { download: true }, of null als je annuleert. */
+async function pickSaveTarget(name, ext) {
+  if (!canSaveAs()) return { download: true, name };
+  try {
+    const handle = await window.showSaveFilePicker({ suggestedName: name, id: 'tcf-' + ext, types: [SAVE_TYPES[ext]] });
+    return { handle, name: handle.name };
+  } catch (err) {
+    if (err && err.name === 'AbortError') return null;     // geannuleerd
+    console.warn('Opslaan als niet mogelijk, val terug op download:', err);
+    return { download: true, name };
+  }
+}
+async function saveToTarget(target, blob) {
+  if (target.handle) {
+    const w = await target.handle.createWritable();
+    await w.write(blob);
+    await w.close();
+  } else download(blob, target.name);
+}
+
 function download(blob, name) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1066,6 +1096,8 @@ async function exportAudio(a = 0, b = editEnd(), suffix = '') {
   if (len <= 0.01) { toast('Niets om te exporteren'); return; }
   const used = new Set(S.clips.map((c) => c.takeId));
   const nch = Math.max(1, ...S.takes.filter((t) => used.has(t.id)).map((t) => t.buffer.numberOfChannels));
+  const target = await pickSaveTarget(safeName(S.project ? S.project.name : 'edit') + suffix + '.' + fmtDef.ext, fmtDef.ext);
+  if (!target) { toast('Exporteren geannuleerd'); return; }
   busy(true, 'Exporteren…');
   try {
     if (fmtDef.ext === 'mp3') { busy(true, 'MP3-encoder laden…'); await loadLame(); busy(true, 'Exporteren…'); }
@@ -1086,13 +1118,14 @@ async function exportAudio(a = 0, b = editEnd(), suffix = '') {
       peak = peakOf();
     }
     const blob = fmtDef.ext === 'mp3' ? await encodeMp3(buf, fmtDef.kbps) : encodeWav(buf, fmtDef.bits);
-    const name = safeName(S.project ? S.project.name : 'edit') + suffix + '.' + fmtDef.ext;
-    download(blob, name);
+    const name = target.name;
+    busy(true, 'Opslaan…');
+    await saveToTarget(target, blob);
     const pdb = peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞';
     const mb = (blob.size / 1048576).toFixed(1);
     toast(peak > 1 && fmtDef.bits !== 32
       ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Zet normaliseren aan of verlaag de gain.`
-      : `"${name}" geëxporteerd: ${fmt(len)} · ${khz(sr)} · ${mb} MB · piek ${pdb} dBFS${normInfo}`);
+      : `"${name}" ${target.handle ? 'opgeslagen' : 'gedownload'}: ${fmt(len)} · ${khz(sr)} · ${mb} MB · piek ${pdb} dBFS${normInfo}`);
   } catch (err) {
     console.error(err); toast('Export mislukt: ' + (err.message || err));
   } finally { busy(false); }
@@ -1112,7 +1145,7 @@ function inspectExport(el) {
     <div class="row">
       <button id="exAll" class="primary">Hele edit exporteren</button>
       ${r ? `<button id="exSel">Alleen selectie ${fmt(r[0], 1)} – ${fmt(r[1], 1)}</button>` : ''}
-      <span class="hint">WAV voor verdere bewerking of mastering; MP3 om te delen. ${S.exportFmt.startsWith('mp3') ? 'De MP3-encoder wordt de eerste keer van internet geladen; daarna werkt het ook offline.' : ''}</span>
+      <span class="hint">${canSaveAs() ? 'Je kiest zo dadelijk zelf de map en de naam (Opslaan als).' : 'Het bestand komt in je downloadmap (deze browser heeft geen Opslaan als-venster; in Chrome wel).'} WAV voor verdere bewerking of mastering; MP3 om te delen. ${S.exportFmt.startsWith('mp3') ? 'De MP3-encoder wordt de eerste keer van internet geladen; daarna werkt het ook offline.' : ''}</span>
     </div>`;
   $('exFmt').onchange = (e) => { S.exportFmt = e.target.value; saveSettings(); renderInspector(); };
   $('exNorm').onchange = (e) => { S.normalize = e.target.checked; saveSettings(); };
@@ -3297,6 +3330,8 @@ async function cleanupFiles() {
 const PROJ_MAGIC = 'TCFPROJ1';
 async function exportProjectFile() {
   if (!S.takes.length) { toast('Er is nog geen project om te bewaren'); return; }
+  const target = await pickSaveTarget(safeName(S.project ? S.project.name : 'project') + '.crossfader', 'crossfader');
+  if (!target) { toast('Bewaren geannuleerd'); return; }
   busy(true, 'Projectbestand maken…');
   try {
     await saveProject();
@@ -3311,8 +3346,9 @@ async function exportProjectFile() {
     const head = new TextEncoder().encode(JSON.stringify({ format: 1, app: 'Take Crossfader', project: rec, files }));
     const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, head.length, true);
     const blob = new Blob([PROJ_MAGIC, len, head, ...blobs], { type: 'application/octet-stream' });
-    download(blob, safeName(rec.name) + '.crossfader');
-    toast(`Projectbestand gemaakt (${(blob.size / 1048576).toFixed(1)} MB). Bewaar het bijvoorbeeld in iCloud Drive of op een USB-stick.`);
+    busy(true, 'Opslaan…');
+    await saveToTarget(target, blob);
+    toast(`Projectbestand "${target.name}" ${target.handle ? 'opgeslagen' : 'gedownload'} (${(blob.size / 1048576).toFixed(1)} MB).${target.handle ? '' : ' Het staat in je downloadmap.'}`);
   } catch (err) {
     console.error(err); toast('Projectbestand maken mislukt: ' + (err.message || err));
   } finally { busy(false); }
