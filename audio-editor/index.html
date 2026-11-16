@@ -543,6 +543,30 @@ function gapAt(t) {
   return { a, b: next.start, next };
 }
 
+/** Haal [t0,t1] uit de edit; alles erna schuift aan en de naad krijgt een standaard-crossfade. */
+function deleteRange(t0, t1) {
+  if (t1 - t0 < 0.005) return;
+  const d = t1 - t0;
+  mutate(() => {
+    const out = [];
+    for (const c of S.clips) {
+      const ce = end(c);
+      if (ce <= t0 + 1e-9) { out.push(c); continue; }
+      if (c.start >= t1 - 1e-9) { out.push({ ...c, start: c.start - d }); continue; }
+      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.005 });
+      if (ce > t1) out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t0, offset: c.offset + (t1 - c.start), dur: ce - t1, fadeIn: 0.005, xShape: 'eqp' });
+    }
+    S.clips = out; normalize();
+    for (let i = 1; i < S.clips.length; i++) {
+      const a = S.clips[i - 1], b = S.clips[i];
+      if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
+    }
+    S.sel = null;
+    S.playhead = Math.max(0, t0 - 1);
+  });
+  toast(`${fmt(d, 2)} weggehaald; de rest is aangeschoven`);
+}
+
 /** Schuif clip c en alles erna naar links, tot tegen de vorige clip (of 0:00). */
 function closeGapBefore(c) {
   const prevEnd = S.clips.filter((x) => x !== c && x.start < c.start).reduce((m, x) => Math.max(m, end(x)), 0);
@@ -582,6 +606,8 @@ function deleteSelection() {
     if (j) mutate(() => setXfLen(j.a, j.b, 0));
   } else if (s.kind === 'take') {
     const t = takeOf(s.id); if (t) removeTake(t);
+  } else if (s.kind === 'erange') {
+    deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1));
   } else if (s.kind === 'gap') {
     const g = gapAt(s.t); if (g) closeGapBefore(g.next);
   }
@@ -1078,6 +1104,14 @@ function drawBase() {
     g.fillText('Hier verschijnen je takes', 16, RULER + EDIT_H + TAKE_H / 2);
   }
 
+  // selectie in de edit (liniaal of Shift+slepen)
+  if (S.sel && S.sel.kind === 'erange') {
+    const a = px(Math.min(S.sel.t0, S.sel.t1)), b = px(Math.max(S.sel.t0, S.sel.t1));
+    g.fillStyle = 'rgba(255,211,42,0.16)'; g.fillRect(a, y, b - a, h);
+    g.fillStyle = 'rgba(255,211,42,0.55)'; g.fillRect(a, 0, b - a, RULER - 1);
+    g.fillStyle = '#ffd32a'; g.fillRect(a, 0, 1, RULER + EDIT_H); g.fillRect(b - 1, 0, 1, RULER + EDIT_H);
+  }
+
   // geselecteerd leeg stuk
   if (S.sel && S.sel.kind === 'gap') {
     const gp = gapAt(S.sel.t);
@@ -1110,6 +1144,7 @@ function frame() {
       if (p.loop) { play(p.loop[0], p.loop[1], p.loop); t = p.loop[0]; }
       else {
         stop(); t = p.mode === 'edit' ? p.to : S.playhead;
+        if (p.then) { p.then(); requestAnimationFrame(frame); return; }
         if (S.sel && S.sel.kind === 'junction') renderInspector();
       }
     }
@@ -1284,6 +1319,26 @@ function renderInspector() {
   }
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
+  if (s && s.kind === 'erange') {
+    const a = Math.min(s.t0, s.t1), b = Math.max(s.t0, s.t1);
+    el.innerHTML = `
+      <div class="insp-head"><h2>Selectie in de edit</h2><span>${fmt(a)} – ${fmt(b)} · ${fmt(b - a, 2)}</span></div>
+      <div class="row">
+        <button id="erDel" class="primary">Weghalen <kbd>Delete</kbd></button>
+        <button id="erPlay">▶ Beluister selectie</button>
+        <button id="erPreview">▶ Beluister zonder dit stuk</button>
+        <span class="hint">Weghalen knipt dit stuk eruit; alles erna schuift aan en de naad krijgt een crossfade van ${ms(S.defXf)} ms. Ongedaan maken met ⌘Z.</span>
+      </div>`;
+    $('erDel').onclick = () => deleteRange(a, b);
+    $('erPlay').onclick = () => play(a, b);
+    $('erPreview').onclick = () => {
+      // speel 2 s voor de selectie, en ga dan verder vanaf het eind (zoals het na weghalen zou klinken, zonder crossfade)
+      play(Math.max(0, a - S.preroll), a);
+      const p = S.playing; if (!p) return;
+      p.then = () => play(b, Math.min(editEnd(), b + S.preroll));
+    };
+    return;
+  }
   if (s && s.kind === 'gap') {
     const g = gapAt(s.t);
     if (g) {
@@ -1316,8 +1371,9 @@ function renderInspector() {
       <span><kbd>←</kbd> <kbd>→</kbd> knip ±1 ms (Shift ±10 ms)</span>
       <span><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> ongedaan maken</span>
       <span><kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
-      <span>Ctrl/⌘ + scrollwiel: zoomen</span>
-      <span>Beeld schuiven: sleep een leeg stuk van de EDIT-baan, veeg met twee vingers op het trackpad, Shift + scrollwiel of gebruik de schuifbalk onder de sporen</span>
+      <span>Zoomen: knijp op het trackpad, ⌘ + twee vingers omhoog/omlaag, of <kbd>+</kbd> <kbd>−</kbd></span>
+      <span>Beeld schuiven: veeg met twee vingers naar links/rechts, of sleep een leeg stuk van de EDIT-baan</span>
+      <span>Stuk weghalen: sleep in de tijdbalk bovenaan (of Shift + sleep in de edit) en druk <kbd>Delete</kbd></span>
       <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
@@ -1521,7 +1577,8 @@ cv.addEventListener('pointerdown', (e) => {
   cv.setPointerCapture(e.pointerId);
   const t = tAt(x), lane = laneAt(y);
   const d = { x0: x, moved: false, t0: t };
-  if (lane.kind === 'ruler' || lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
+  if (lane.kind === 'ruler' || (lane.kind === 'edit' && e.shiftKey)) { d.type = 'erange'; }  // slepen = selectie in de edit
+  else if (lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
     if (!h) { d.type = 'pan'; d.view0 = S.view; select(null); }   // leeg vlak: slepen schuift het beeld, klikken zet de afspeelkop
@@ -1556,6 +1613,12 @@ cv.addEventListener('pointermove', (e) => {
   const c = d.c, o = d.o;
   switch (d.type) {
     case 'playhead': S.playhead = Math.max(0, tAt(x)); break;
+    case 'erange': {
+      const t0 = Math.max(0, snapT(d.t0, null, false)), t1 = Math.max(0, snapT(tAt(x), null, false));
+      if (!S.sel || S.sel.kind !== 'erange') { S.sel = { kind: 'erange', t0, t1 }; S.range = null; }
+      S.sel.t0 = t0; S.sel.t1 = t1;
+      break;
+    }
     case 'pan':
       S.view = Math.max(0, d.view0 - dx / S.pps);
       updateScroll();
@@ -1623,6 +1686,15 @@ function endDrag(e) {
     S.dirty = true;
     return;
   }
+  if (d.type === 'erange') {
+    const s = S.sel;
+    if (!d.moved || !s || s.kind !== 'erange' || Math.abs(s.t1 - s.t0) < 0.01) {
+      if (s && s.kind === 'erange') S.sel = null;
+      if (!d.moved) { S.playhead = Math.max(0, d.t0); if (S.playing) restartAtPlayhead(); }
+    }
+    S.dirty = true; buildHeads(); renderInspector(); updateButtons();
+    return;
+  }
   if (!d.moved) {
     if (['move', 'slip', 'trimL', 'trimR', 'range'].includes(d.type)) S.playhead = Math.max(0, d.t0);
     if (d.type === 'range') { S.range = null; renderInspector(); updateButtons(); }
@@ -1656,7 +1728,7 @@ function restartAtPlayhead() {
 function hoverCursor(x, y, alt) {
   const lane = laneAt(y);
   let cur = 'default';
-  if (lane.kind === 'ruler') cur = 'pointer';
+  if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
@@ -1677,6 +1749,20 @@ cv.addEventListener('wheel', (e) => {
     S.dirty = true; updateScroll();
   }
 }, { passive: false });
+
+// Knijpen op het trackpad: Chrome/Edge sturen dat als wheel + ctrlKey (hierboven), Safari als gesture-events.
+let gestureScale = 1;
+cv.addEventListener('gesturestart', (e) => { e.preventDefault(); gestureScale = 1; });
+cv.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  zoomAt(clamp(e.clientX - r.left, 0, cssW), e.scale / gestureScale);
+  gestureScale = e.scale;
+});
+cv.addEventListener('gestureend', (e) => e.preventDefault());
+window.addEventListener('keydown', (e) => { if (e.key === 'Shift') S.shiftDown = true; });
+window.addEventListener('keyup', (e) => { if (e.key === 'Shift') S.shiftDown = false; });
+window.addEventListener('blur', () => { S.shiftDown = false; });
 
 function zoomAt(x, f) {
   const t = tAt(x);
