@@ -761,7 +761,12 @@ function deleteSelection(leaveGap = false) {
 
 /* ---------- undo ---------- */
 function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers }); }
-function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift(); S.redo.length = 0; }
+function pushUndo() {
+  S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift();
+  S.redoBackup = S.redo.slice();   // terug te zetten als de bewerking per saldo niets verandert
+  S.redo.length = 0;
+  S.undoCheck = true;
+}
 function restore(str) {
   const o = JSON.parse(str);
   S.clips = o.clips.filter((c) => takeOf(c.takeId));
@@ -771,12 +776,14 @@ function restore(str) {
 }
 function undo() {
   if (S.drag) return;
+  S.undoCheck = false;
   if (!S.undo.length) { toast('Niets meer om ongedaan te maken'); return; }
   S.redo.push(snapshot()); restore(S.undo.pop());
   toast(`Ongedaan gemaakt${S.undo.length ? ` (nog ${S.undo.length} stap${S.undo.length === 1 ? '' : 'pen'} terug mogelijk)` : ''}`);
 }
 function redo() {
   if (S.drag) return;
+  S.undoCheck = false;
   if (!S.redo.length) { toast('Niets om opnieuw te doen'); return; }
   S.undo.push(snapshot()); restore(S.redo.pop());
   toast('Opnieuw uitgevoerd');
@@ -801,6 +808,12 @@ function validateSel() {
 
 function afterEdit() {
   normalize(); validateSel();
+  // Een 'bewerking' die niets veranderde (bijv. een clip terug op zijn plek) telt niet mee
+  // en mag de opnieuw-lijst niet wissen.
+  if (S.undoCheck) {
+    S.undoCheck = false;
+    if (S.undo.length && S.undo[S.undo.length - 1] === snapshot()) { S.undo.pop(); S.redo = S.redoBackup || []; }
+  }
   S.dirty = true;
   buildHeads(); renderInspector(); updateButtons(); updateScroll();
   const p = S.playing;
@@ -2739,7 +2752,9 @@ cv.addEventListener('pointermove', (e) => {
   const d = S.drag;
   if (!d || d.xf) { hoverCursor(x, y, e.altKey); return; }
   const dx = x - d.x0;
-  if (!d.moved && Math.abs(dx) < 3) return;
+  // clips en crossfades pas verslepen na 6 px, zodat een klik met een kleine trilling niets verschuift
+  const thr = ['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type) ? 6 : 3;
+  if (!d.moved && Math.abs(dx) < thr) return;
   if (!d.moved) {
     d.moved = true;
     if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type)) pushUndo();
