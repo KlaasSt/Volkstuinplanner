@@ -171,7 +171,7 @@ kbd {
     <button id="alignHereBtn" title="Alle takes zo verschuiven dat dezelfde passage onder de afspeelkop ligt (H). De edit blijft staan.">Takes hier uitlijnen</button>
     <span class="group" title="Optioneel: zelf de plek in de take aanwijzen. Zonder bronpunten zoekt de editor de bijbehorende plek zelf.">Bron
       <button id="srcBtn" title="Bron in, in de geselecteerde of solo spelende take (B)">◇ in</button><button id="srcOutBtn" title="Bron uit (⇧B)">uit ◇</button></span>
-    <button id="compBtn" title="Overnemen: vanaf het doelpunt verder met de take (E). Of: geselecteerd stuk uit een take in de edit plaatsen.">Overnemen</button>
+    <button id="compBtn" title="Overnemen (E): het stuk tussen Doel in en uit vervangen — of met alleen Doel in: tot de volgende wissel. ⌥E: alles na Doel in vervangen. Of: een geselecteerd stuk uit een take in de edit plaatsen.">Overnemen</button>
     <span class="sep"></span>
     <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
     <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
@@ -1607,7 +1607,7 @@ function renderInspector() {
     <h2>Zo werkt het</h2>
     <ol>
       <li><b>Importeer je takes</b> (wav, aiff, flac, mp3, m4a…), of sleep ze in het venster. De eerste take komt meteen in de <b>edit</b> (bovenste baan); alle takes staan eronder.</li>
-      <li><b>Vrij tempo (bron/doel, zoals in Sequoia):</b> speel de edit af en druk <kbd>D</kbd> op de noot waar je wilt wisselen (doelpunt). Druk <kbd>H</kbd>: alle takes schuiven zo dat dezelfde passage onder de afspeelkop ligt. Klik de take die je wilt en druk <kbd>E</kbd>: vanaf het doelpunt gaat de edit verder met die take, met een crossfade. Wil je het bronpunt zelf kiezen, klik dan in de take op de noot (of speel hem solo) en druk <kbd>B</kbd> vóór <kbd>E</kbd>. Terug naar de oude take? Zelfde werkwijze, een paar maten later.</li>
+      <li><b>Vrij tempo (bron/doel, zoals in Sequoia):</b> speel de edit af en druk <kbd>D</kbd> op de noot waar je wilt wisselen (doelpunt). Druk <kbd>H</kbd>: alle takes schuiven zo dat dezelfde passage onder de afspeelkop ligt. Klik de take die je wilt en druk <kbd>E</kbd>: vanaf het doelpunt gaat de edit verder met die take, met een crossfade. Wil je het bronpunt zelf kiezen, klik dan in de take op de noot (of speel hem solo) en druk <kbd>B</kbd> vóór <kbd>E</kbd>. Staan er verderop al wissels, dan loopt de nieuwe take tot de eerstvolgende wissel en blijft de rest staan; je hoeft dus niet op volgorde te werken (<kbd>⌥E</kbd> vervangt wél alles erna).</li>
       <li><b>Eén noot of kort stuk vervangen:</b> sleep in de tijdbalk over de noot (of zet <kbd>D</kbd> en <kbd>⇧D</kbd>), klik de take die je wilt en druk <kbd>E</kbd>. De editor zoekt in die take zelf het begin én eind van hetzelfde stuk en zet het ertussen, met crossfades. De rest van de edit blijft zoals hij was.</li>
       <li><b>Takes op een klik:</b> sleep in een take-baan om een stuk te selecteren en druk <kbd>E</kbd>. Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten.</li>
       <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
@@ -2050,7 +2050,7 @@ function assembleEdit(take, d, s) {
  * Vervangen (4-punts-edit): [din,dout] in de edit wordt [sin,sout] uit 'take', met crossfades aan beide kanten.
  * Is het nieuwe stuk langer of korter, dan schuift alles erna dat verschil op; de rest blijft intact.
  */
-function patchEdit(take, din, dout, sin, sout) {
+function patchEdit(take, din, dout, sin, sout, dropUntil = null) {
   const len = take.buffer.duration;
   if (sin < 0 || sout > len || sout - sin < 0.02) { toast('Het stuk in de take valt (deels) buiten de opname'); return; }
   const delta = (sout - sin) - (dout - din);
@@ -2061,6 +2061,7 @@ function patchEdit(take, din, dout, sin, sout) {
       if (ce <= din + 1e-9) { out.push(c); continue; }
       if (c.start >= dout - 1e-9) { out.push({ ...c, start: c.start + delta }); continue; }
       if (c.start < din) out.push({ ...c, dur: din - c.start, fadeOut: 0.005 });
+      if (dropUntil != null && ce <= dropUntil + 1e-6) continue;   // uitloop van de vervangen take in de oude crossfade
       if (ce > dout) out.push({ ...c, id: c.start < din ? newId() : c.id, start: dout + delta, offset: c.offset + (dout - c.start), dur: ce - dout, fadeIn: 0.005, xShape: 'eqp' });
     }
     const nc = newClip(take, din, sin, sout - sin);
@@ -2079,10 +2080,32 @@ function patchEdit(take, din, dout, sin, sout) {
   toast(`${fmt(din, 2)} – ${fmt(dout, 2)} vervangen door "${take.name}"${dms ? ` (${Math.abs(dms)} ms ${dms > 0 ? 'langer' : 'korter'}; de rest schuift mee)` : ''}. L herhaalt de wissel, ⌘Z maakt ongedaan.`);
 }
 
-/** E: selectie uit een take overnemen, of overnemen/vervangen met doel- en bronpunten. */
-function editAction() {
+/**
+ * De eerstvolgende wissel na tijd d: het midden van de crossfade aan het eind van de clip die op d klinkt
+ * (of het eind van die clip als daarna nog iets komt). null als er na d niets meer komt.
+ */
+function nextCutAfter(d) {
+  const cur = [...S.clips].reverse().find((c) => c.start <= d && end(c) > d);
+  if (!cur) return null;
+  const j = junctions().find((x) => x.a === cur);
+  if (j) { const mid = (j.s + j.e) / 2; if (mid > d + 0.05) return { t: mid, dropUntil: j.e }; }
+  if (S.clips.some((c) => c !== cur && c.start >= end(cur) - 1e-6)) return { t: end(cur), dropUntil: null };
+  return null;
+}
+
+/**
+ * E: selectie uit een take overnemen, of overnemen/vervangen met doel- en bronpunten.
+ * Alleen D gezet: de take loopt tot de volgende bestaande wissel; daarna gaat de edit verder zoals hij was.
+ * replaceRest (⌥E): alles na D vervangen door de take.
+ */
+function editAction(replaceRest = false) {
   if (S.range) { compRange(); return; }
-  const P = S.pts, d = P.dest, dOut = P.destOut;
+  const P = S.pts, d = P.dest;
+  let dOut = P.destOut, dropUntil = null, auto = false;
+  if (d != null && dOut == null && !replaceRest) {
+    const nx = nextCutAfter(d);
+    if (nx) { dOut = nx.t; dropUntil = nx.dropUntil; auto = true; }
+  }
   if (d == null) { toast('Zet eerst Doel in (D) — of sleep in de tijdbalk over het stuk dat je wilt vervangen — of selecteer een stuk in een take'); return; }
   let take, sIn, notFound = false;
   if (P.src) { take = takeOf(P.src.takeId); sIn = P.src.s; }
@@ -2105,7 +2128,8 @@ function editAction() {
       take.sync = tmp;
     }
     busy(false);
-    patchEdit(take, d, dOut, sIn, sOut);
+    patchEdit(take, d, dOut, sIn, sOut, dropUntil);
+    if (auto) setTimeout(() => toast(`"${take.name}" loopt tot de volgende wissel (${fmt(dOut, 1)}); daarna gaat de edit verder zoals hij was. Alles erna vervangen? ⌥E.`), 2600);
   }
   if (notFound) setTimeout(() => toast('Let op: de bijbehorende plek in de take kon niet zeker worden gevonden. Controleer de wissel, of zet zelf B (en ⇧B).'), 2800);
 }
@@ -2771,7 +2795,7 @@ $('fileInput').onchange = (e) => { importFiles(e.target.files); e.target.value =
 $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
-$('compBtn').onclick = editAction;
+$('compBtn').onclick = (e) => editAction(e.altKey);
 $('destBtn').onclick = (e) => setDestPoint(S.playhead, e.shiftKey);
 $('destOutBtn').onclick = () => setDestPoint(S.playhead, true);
 $('srcBtn').onclick = (e) => setSourcePoint(e.shiftKey);
@@ -2796,6 +2820,8 @@ $('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.val
 
 document.addEventListener('keydown', (e) => {
   const k = e.key, mod = e.ctrlKey || e.metaKey;
+  // ⌥E geeft op een Mac een accentteken; herken de toets daarom aan zijn plek
+  if (e.code === 'KeyE' && e.altKey && !mod && !e.target.matches('input, select, textarea')) { e.preventDefault(); editAction(true); return; }
   // ⌘Z / Ctrl+Z werkt overal, ook als de cursor nog in een getalveld staat (alleen in een tekstveld niet).
   if (mod && k.toLowerCase() === 'z' && !e.target.matches('input[type=text], textarea')) {
     e.preventDefault(); if (e.target.blur) e.target.blur(); e.shiftKey ? redo() : undo(); return;
@@ -2811,7 +2837,7 @@ document.addEventListener('keydown', (e) => {
   const sj = S.sel && S.sel.kind === 'junction' ? junctionOf(S.sel.a, S.sel.b) : null;
   switch (k) {
     case 's': case 'S': splitAt(S.playhead); break;
-    case 'e': case 'E': editAction(); break;
+    case 'e': case 'E': editAction(e.altKey); break;
     case 'd': case 'D': setDestPoint(S.playhead, e.shiftKey); break;
     case 'b': case 'B': setSourcePoint(e.shiftKey); break;
     case 'h': case 'H': alignTakesHere(); break;
