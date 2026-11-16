@@ -400,27 +400,33 @@ function junctions() {
 }
 function junctionOf(aId, bId) { return junctions().find((j) => j.a.id === aId && j.b.id === bId) || null; }
 
-/** Zet de crossfade-lengte symmetrisch rond het midden van de huidige overgang. */
+/**
+ * Zet de crossfade-lengte rond het midden van de huidige overgang: symmetrisch als dat kan,
+ * anders schuift de rest naar de kant waar nog bronmateriaal is (bijv. als B bij het begin van de opname start).
+ */
 function setXfLen(a, b, L) {
-  const ta = takeOf(a.takeId), tb = takeOf(b.takeId);
+  const ta = takeOf(a.takeId);
   const i = S.clips.indexOf(a);
   const prevA = S.clips[i - 1], nextB = S.clips[i + 2];
   const c = (b.start + end(a)) / 2;
-  let half = Math.max(0, L / 2);
-  half = Math.min(half,
-    ta.buffer.duration - (a.offset + (c - a.start)),   // bronmateriaal na het eind van A
-    b.offset + (c - b.start),                          // bronmateriaal voor het begin van B
-    c - a.start - MIN_DUR,
+  const maxA = Math.max(0, Math.min(                   // hoe ver het eind van A voorbij c kan
+    ta.buffer.duration - (a.offset + (c - a.start)),
     end(b) - c - MIN_DUR,
-    prevA ? c - end(prevA) : Infinity,
-    nextB ? nextB.start - c : Infinity);
-  half = Math.max(0, half);
-  a.dur = c + half - a.start;
-  const ns = c - half;
+    nextB ? nextB.start - c : Infinity));
+  const maxB = Math.max(0, Math.min(                   // hoe ver het begin van B voor c kan
+    b.offset + (c - b.start),
+    c - a.start - MIN_DUR,
+    prevA ? c - end(prevA) : Infinity));
+  L = Math.max(0, L);
+  let hA = Math.min(L / 2, maxA), hB = Math.min(L / 2, maxB);
+  hA = Math.min(maxA, hA + (L - hA - hB));
+  hB = Math.min(maxB, hB + (L - hA - hB));
+  a.dur = c + hA - a.start;
+  const ns = c - hB;
   b.offset -= b.start - ns;
   b.dur += b.start - ns;
   b.start = ns;
-  return half * 2;
+  return hA + hB;
 }
 
 /** Roll-edit: verschuif het knippunt (eind A + begin B) met d seconden. */
@@ -488,6 +494,44 @@ function splitAt(t) {
     S.clips.push(n);
     S.sel = { kind: 'clip', id: n.id };
   });
+}
+
+/**
+ * Na het slepen van clip m: wat eronder ligt wordt vervangen (standaard) of opzij geschoven (insert),
+ * en waar m aansluit op een buur komt een standaard-crossfade.
+ * Een kleine gedeeltelijke overlap (< helft van de kortste clip) blijft staan als handmatige crossfade.
+ */
+function resolveDrop(m, insert) {
+  const s = m.start, e = end(m), out = [m];
+  for (const c of S.clips) {
+    if (c === m) continue;
+    const ce = end(c);
+    if (insert) {
+      if (c.start < s - 1e-9 && ce > s + 1e-9) {
+        const k = s - c.start;
+        out.push({ ...c, dur: k, fadeOut: 0.005 });
+        out.push({ ...c, id: newId(), start: e, offset: c.offset + k, dur: c.dur - k, fadeIn: 0.005, xShape: 'eqp' });
+      } else if (c.start >= s - 1e-9) out.push({ ...c, start: c.start + m.dur });
+      else out.push(c);
+      continue;
+    }
+    if (ce <= s + 1e-9 || c.start >= e - 1e-9) { out.push(c); continue; }   // geen overlap
+    if (c.start >= s - 1e-9 && ce <= e + 1e-9) continue;                     // helemaal bedekt: weg
+    if (c.start < s && ce > e) {                                             // m ligt erin: splitsen
+      out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });
+      out.push({ ...c, id: newId(), start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
+      continue;
+    }
+    const ov = c.start < s ? ce - s : e - c.start;
+    if (ov < Math.min(c.dur, m.dur) / 2) { out.push(c); continue; }          // bewuste crossfade
+    if (c.start < s) out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });   // links: inkorten
+    else out.push({ ...c, start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
+  }
+  S.clips = out;
+  normalize();
+  const i = S.clips.indexOf(m), p = S.clips[i - 1], n = S.clips[i + 1];
+  if (p && Math.abs(end(p) - m.start) < 1e-6) setXfLen(p, m, S.defXf);
+  if (n && Math.abs(end(m) - n.start) < 1e-6) setXfLen(m, n, S.defXf);
 }
 
 function swapTake(c, take) {
@@ -1206,7 +1250,9 @@ function renderInspector() {
       <span><kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
       <span>Ctrl/⌘ + scrollwiel: zoomen</span>
       <span>Shift + scrollwiel: scrollen</span>
-      <span>Clip slepen: verplaatsen · randen: trimmen</span>
+      <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
+      <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
+      <span>Clipranden slepen: trimmen</span>
       <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
       <span>Crossfade slepen: knip verschuiven</span>
       <span>Alt + crossfade slepen: lengte</span>
@@ -1500,7 +1546,10 @@ function endDrag(e) {
     renderInspector(); updateButtons();
   } else if (d.type === 'playhead') {
     if (S.playing) restartAtPlayhead();
-  } else afterEdit();
+  } else {
+    if (d.type === 'move') resolveDrop(d.c, !!(e && (e.metaKey || e.ctrlKey)));
+    afterEdit();
+  }
   S.dirty = true;
 }
 cv.addEventListener('pointerup', endDrag);
