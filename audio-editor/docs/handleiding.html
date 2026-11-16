@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Take Crossfader – Handleiding</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+  :root { --ink: #1b1f24; --muted: #5b6573; --line: #d9dee5; --accent: #2a6fd6; --soft: #f3f6fa; --warn: #fff6dd; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Inter, "DejaVu Sans", sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 2mm; letter-spacing: -0.01em; }
+  h2 { font-size: 14pt; margin: 8mm 0 3mm; padding-bottom: 1.5mm; border-bottom: 1.5px solid var(--accent); break-after: avoid; }
+  h3 { font-size: 11pt; margin: 5mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 2.5mm; }
+  ol, ul { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin: 0.8mm 0; }
+  .sub { color: var(--muted); font-size: 11pt; margin-bottom: 6mm; }
+  .lead { font-size: 10.5pt; }
+  .page-break { break-before: page; }
+  kbd {
+    font-family: "DejaVu Sans", Inter, sans-serif; font-size: 8.5pt; font-weight: 600;
+    display: inline-block; min-width: 5mm; text-align: center; padding: 0.2mm 1.4mm; margin: 0 0.3mm;
+    border: 1px solid #b8c0cc; border-bottom-width: 2px; border-radius: 1.2mm; background: #fff; line-height: 1.3; white-space: nowrap;
+  }
+  .btn { font-weight: 600; white-space: nowrap; }
+  .box { background: var(--soft); border: 1px solid var(--line); border-radius: 2.5mm; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+  .tip { background: var(--warn); border-color: #ecd9a0; }
+  .box b.t { display: block; margin-bottom: 1mm; }
+  .scen { break-inside: avoid; margin-bottom: 4mm; }
+  .scen h3 { margin-top: 4mm; }
+  .scen .when { color: var(--muted); margin-bottom: 1.5mm; }
+  figure { margin: 3mm 0 4mm; break-inside: avoid; }
+  figure img { width: 100%; border-radius: 2mm; border: 1px solid var(--line); display: block; }
+  figcaption { color: var(--muted); font-size: 8.5pt; margin-top: 1.2mm; }
+  table { width: 100%; border-collapse: collapse; margin: 1mm 0 4mm; break-inside: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 1.3mm 2mm; border-bottom: 1px solid var(--line); }
+  tr { break-inside: avoid; }
+  th { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border-bottom: 1.5px solid #b8c0cc; }
+  td.k { width: 34%; white-space: nowrap; }
+  .group { font-weight: 700; background: var(--soft); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .toc { columns: 2; column-gap: 8mm; margin: 0 0 4mm; padding-left: 5mm; }
+  .toc li { break-inside: avoid; }
+  .small { font-size: 8.5pt; color: var(--muted); }
+  .model { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 3mm 0; }
+  .model div { border: 1px solid var(--line); border-radius: 2mm; padding: 2.5mm 3mm; }
+  .model b { display: block; }
+</style>
+</head>
+<body>
+
+<h1>Take Crossfader</h1>
+<div class="sub">Handleiding · montage van takes met crossfades · versie november 2026</div>
+
+<p class="lead">Take Crossfader is een audio-editor om uit meerdere opnames (<i>takes</i>) van hetzelfde stuk één eindversie samen te stellen, met nauwkeurige crossfades op de overgangen. Hij werkt volgens het principe van professionele montagesystemen zoals Sequoia, Pyramix en SADiE: de takes zijn de bronnen, de edit is het doel. Ook takes in vrij tempo kun je noot voor noot op elkaar laten aansluiten.</p>
+
+<div class="model">
+  <div><b>Takes (onderste banen) = bronnen</b>Je originele opnames. Die worden nooit veranderd. Je kunt ze verschuiven om dezelfde passage onder elkaar te leggen.</div>
+  <div><b>EDIT (bovenste baan) = doel</b>De eindversie, opgebouwd uit stukjes van de takes. Elke wissel tussen twee takes is een crossfade die je altijd nog kunt aanpassen.</div>
+</div>
+
+<h3>Inhoud</h3>
+<ol class="toc">
+  <li>Starten, installeren en bewaren</li>
+  <li>Het scherm</li>
+  <li>Werkwijzen per situatie (A t/m J)</li>
+  <li>Een overgang fijn afstellen</li>
+  <li>Het uitlijnvenster</li>
+  <li>Toetscombinaties</li>
+  <li>Muis en trackpad</li>
+  <li>Tips en problemen oplossen</li>
+</ol>
+
+<h2>1. Starten, installeren en bewaren</h2>
+<h3>Welke browser?</h3>
+<p>Gebruik op de Mac bij voorkeur <b>Google Chrome</b>. De editor is in Chrome (Chromium) getest, en Chrome bewaart de projecten op je Mac betrouwbaar. Safari werkt in principe ook, maar is niet getest.</p>
+<h3>Als app installeren</h3>
+<ul>
+  <li><b>Chrome:</b> open de editor en klik op <span class="btn">Installeer app</span> in de werkbalk, of op het installatie-icoon rechts in de adresbalk. De app komt in de map Apps en in Launchpad, en opent in een eigen venster.</li>
+  <li><b>Safari (macOS 14 of nieuwer):</b> menu <i>Archief → Voeg toe aan Dock…</i></li>
+</ul>
+<p>Open de app één keer met internet. Daarna werkt hij ook zonder internet, inclusief MP3-export (nadat je één keer met internet een MP3 hebt gemaakt).</p>
+<h3>Projecten bewaren</h3>
+<ul>
+  <li>Je werk wordt <b>automatisch bewaard</b>, inclusief de audio, kort na elke wijziging. Linksboven zie je de projectnaam en bijvoorbeeld “bewaard om 14:32”.</li>
+  <li>Bij het openen van de app ga je verder waar je was.</li>
+  <li><span class="btn">Projecten</span>: eerdere projecten openen, hernoemen of verwijderen, een <b>nieuw project</b> beginnen, en zien hoeveel opslag ze gebruiken.</li>
+  <li><b>Back-up of naar een andere computer:</b> <span class="btn">Projecten → Project als bestand bewaren…</span> maakt één <i>.crossfader</i>-bestand met de edit en alle audio. Openen gaat met <span class="btn">Projectbestand openen…</span> (of sleep het bestand in het venster).</li>
+</ul>
+<div class="box tip"><b class="t">Alles blijft op je eigen computer</b>Er wordt niets geüpload. Daardoor staan projecten alleen in de browser waarin je werkt. Maak bij belangrijk werk af en toe een projectbestand als back-up.</div>
+
+<h2>2. Het scherm</h2>
+<figure>
+  <img src="img-overzicht.png" alt="Hoofdscherm">
+  <figcaption>De EDIT bestaat hier uit take 1, dan take 2 (vanaf 0:05) en daarna take 3 (vanaf 0:15). De vlinder-iconen ⋈ zijn de crossfades. Geel: een stuk dat vervangen gaat worden (D in – D uit). Groen in de tijdbalk: een marker met notitie. Rood: de afspeelkop. In de take-banen is het lichtere deel het stuk dat in de edit gebruikt wordt.</figcaption>
+</figure>
+<table>
+  <tr><th>Onderdeel</th><th>Wat het doet</th></tr>
+  <tr><td class="k">Tijdbalk (bovenaan)</td><td>Klik = afspeelkop zetten. Slepen = een stuk van de edit selecteren (om te vervangen, weg te halen, te herhalen of te exporteren). Markers verschijnen hier.</td></tr>
+  <tr><td class="k">EDIT-baan</td><td>Je eindversie. Clips, crossfades (⋈), fades, en de gele doelpunten.</td></tr>
+  <tr><td class="k">Take-banen</td><td>De originele opnames. Klik op de naam om een take te kiezen; <span class="btn">▶ solo</span> speelt die take alleen.</td></tr>
+  <tr><td class="k">Paneel onderaan</td><td>Verandert met wat je selecteert: clip, crossfade, take, selectie, marker, uitlijnvenster, exporteren of projecten. Met niets geselecteerd staat hier een korte uitleg.</td></tr>
+  <tr><td class="k">Werkbalk</td><td>Projecten, importeren, afspelen, <i>Terug naar start</i>, knippen, Doel/Bron-punten, <i>Takes hier uitlijnen</i>, <i>Overnemen</i>, markers, uitlijnvenster, ongedaan maken, zoom, Snap, Nuldoorgang, standaard-crossfade en exporteren.</td></tr>
+</table>
+<h3>Instellingen in de werkbalk</h3>
+<ul>
+  <li><b>↩ Terug naar start</b>: na stoppen springt de afspeelkop terug naar waar je begon.</li>
+  <li><b>Snap</b>: bij slepen klikt een clip vast aan randen en de afspeelkop. Houd <kbd>⇧</kbd> ingedrukt tijdens het slepen om dat tijdelijk uit te zetten.</li>
+  <li><b>Nuldoorgang</b>: knippen en weghalen schuiven het knippunt maximaal 5 ms op naar een punt waar de golf door nul gaat. Dat voorkomt tikjes.</li>
+  <li><b>Std. crossfade</b>: de lengte van nieuwe crossfades. 30–60 ms voor de meeste wissels; 10–30 ms als je één noot vervangt.</li>
+</ul>
+
+<h2>3. Werkwijzen per situatie</h2>
+<p>De punten <b>D</b> (doel, in de edit) en <b>B</b> (bron, in een take) kun je zetten <b>tijdens het afspelen</b>, op het moment dat je de noot hoort. Gele lijnen laten zien waar ze staan. <kbd>Esc</kbd> wist ze.</p>
+
+<div class="scen">
+<h3>A · Beginnen: takes importeren</h3>
+<ol>
+  <li>Klik op <span class="btn">Importeer takes</span>, of sleep audiobestanden (wav, aiff, flac, mp3, m4a) in het venster.</li>
+  <li>De eerste take komt automatisch in de edit. Kies eventueel eerst bij <span class="btn">Projecten</span> een <b>Nieuw project</b>.</li>
+  <li>Geef het project een naam via de projectnaam linksboven.</li>
+</ol>
+</div>
+
+<div class="scen">
+<h3>B · Vrij tempo: vanaf een noot verder met een andere take</h3>
+<div class="when">De meest gebruikte werkwijze bij klassieke opnames. Het tempo mag per take verschillen.</div>
+<ol>
+  <li>Speel de edit af en druk <kbd>D</kbd> precies op de noot waar je wilt wisselen (<b>Doel in</b>).</li>
+  <li>Druk <kbd>H</kbd> (<span class="btn">Takes hier uitlijnen</span>): alle takes schuiven zo dat dezelfde noot onder de afspeelkop ligt. De editor herkent de passage aan de noten zelf.</li>
+  <li>Klik op de <b>naam van de take</b> die je wilt gebruiken.</li>
+  <li>Druk <kbd>E</kbd> (<span class="btn">Overnemen</span>). De nieuwe take neemt het over vanaf D, met een crossfade. De crossfade-editor gaat meteen open.</li>
+  <li>Luister met <kbd>L</kbd> (herhalen) of <kbd>A</kbd>, en stel de overgang fijn af (zie hoofdstuk 4).</li>
+</ol>
+<p>Staan er verderop al wissels, dan loopt de nieuwe take <b>tot de eerstvolgende wissel</b>, en daarna gaat de edit verder zoals hij was. Komt er niets meer na, dan loopt de take door tot het eind. Zo kun je de edit gewoon van links naar rechts opbouwen.</p>
+</div>
+
+<div class="scen">
+<h3>C · Eén noot of een kort stuk vervangen</h3>
+<ol>
+  <li><b>Sleep in de tijdbalk</b> over de noot die weg moet (geel: D in – D uit). Of druk tijdens het afspelen <kbd>D</kbd> aan het begin en <kbd>⇧</kbd><kbd>D</kbd> aan het eind.</li>
+  <li>Klik op de <b>naam van de take</b> met de betere noot.</li>
+  <li>Druk <kbd>E</kbd>. De editor zoekt in die take zelf het begin én het eind van dezelfde noot, en zet hem ertussen met een crossfade aan beide kanten.</li>
+  <li>Controleer met <kbd>L</kbd>. De afspeelkop staat al een stukje vóór de wissel.</li>
+</ol>
+<p>Is de nieuwe noot iets langer of korter, dan schuift de rest van de edit precies dat verschil op. Latere wissels en markers blijven intact.</p>
+<div class="box tip"><b class="t">Tip voor korte vervangingen</b>Zet <i>Std. crossfade</i> eerst op 10–30 ms. Een crossfade van 40 ms of meer kan bij een korte noot de inzet hoorbaar uitsmeren.</div>
+</div>
+
+<div class="scen">
+<h3>D · Achteraf nog een passage verwisselen</h3>
+<p>Je hoeft niet op volgorde te werken. Wat je al gedaan hebt, blijft staan:</p>
+<ul>
+  <li><b>Alleen <kbd>D</kbd>, take kiezen, <kbd>E</kbd>:</b> de nieuwe take loopt tot de eerstvolgende bestaande wissel.</li>
+  <li><b>Een precies stuk:</b> sleep in de tijdbalk over de passage (of <kbd>D</kbd> en <kbd>⇧</kbd><kbd>D</kbd>), take kiezen, <kbd>E</kbd>.</li>
+  <li><b>Bewust alles na D vervangen:</b> <kbd>⌥</kbd><kbd>E</kbd> (of <kbd>⌥</kbd>-klik op <span class="btn">Overnemen</span>).</li>
+</ul>
+</div>
+
+<div class="scen">
+<h3>E · Zelf de plek in de take aanwijzen</h3>
+<div class="when">Als de automatische zoekfunctie de verkeerde noot kiest, of als je een andere plek wilt (bijvoorbeeld een herhaling).</div>
+<ol>
+  <li>Klik in de take-baan op de noot (of speel de take met <span class="btn">▶ solo</span> af).</li>
+  <li>Druk <kbd>B</kbd> op het begin (<b>Bron in</b>) en eventueel <kbd>⇧</kbd><kbd>B</kbd> op het eind (<b>Bron uit</b>).</li>
+  <li>Zet het doel met <kbd>D</kbd> (en <kbd>⇧</kbd><kbd>D</kbd>) en druk <kbd>E</kbd>.</li>
+</ol>
+</div>
+
+<div class="scen">
+<h3>F · Takes op een klik (gelijk tempo)</h3>
+<ol>
+  <li>Sleep in een <b>take-baan</b> over het stuk dat je wilt gebruiken.</li>
+  <li>Druk <kbd>E</kbd>: dat stuk vervangt de edit op precies dezelfde tijd, met crossfades aan beide kanten.</li>
+</ol>
+<p>Lopen de takes niet gelijk op? Lijn ze eerst uit met <kbd>H</kbd>, of met <kbd>⌥</kbd>-slepen van de take-baan. Voor vrij tempo zijn werkwijzen B en C geschikter.</p>
+</div>
+
+<div class="scen">
+<h3>G · Een stuk weghalen of een gat dichten</h3>
+<ul>
+  <li><b>Weghalen en aanschuiven:</b> sleep in de tijdbalk over het stuk en druk <kbd>Delete</kbd>. De rest schuift aan, met een crossfade op de naad.</li>
+  <li><b>Weghalen en stilte laten:</b> idem, met <kbd>⌥</kbd><kbd>Delete</kbd>.</li>
+  <li><b>Een gat dichten:</b> klik op de stilte in de EDIT-baan (rood gestippeld) en druk <kbd>Delete</kbd>. Alles erna schuift aan.</li>
+  <li><b>Knippen:</b> zet de afspeelkop en druk <kbd>S</kbd>. Een losse clip haal je weg door hem aan te klikken en op <kbd>Delete</kbd> te drukken.</li>
+</ul>
+</div>
+
+<div class="scen">
+<h3>H · Markers zetten tijdens het luisteren</h3>
+<ol>
+  <li>Druk <kbd>M</kbd> tijdens het afspelen bij elke plek die je wilt onthouden. Het afspelen loopt door.</li>
+  <li>Klik later op een marker in de tijdbalk en typ een notitie, bijvoorbeeld “take 2 beter vanaf hier”.</li>
+  <li>Spring met <kbd>,</kbd> en <kbd>.</kbd> naar de vorige of volgende marker. Een marker verplaats je door hem te slepen.</li>
+</ol>
+</div>
+
+<div class="scen">
+<h3>I · Volumeverschil tussen takes</h3>
+<p>Klinkt een wissel als een sprong in volume? Klik op de crossfade (⋈) en kies <span class="btn">Volume gelijk maken</span>. De editor meet A en B over 3 seconden rond de knip en past het volume van de nieuwe clip aan. Bij een clip heet dat <span class="btn">Volume gelijk aan vorige clip</span>.</p>
+</div>
+
+<div class="scen">
+<h3>J · Exporteren</h3>
+<ol>
+  <li>Klik op <span class="btn">Exporteer…</span>.</li>
+  <li>Kies het formaat:
+    <ul>
+      <li><b>WAV 24-bit</b>: voor verdere bewerking of mastering;</li>
+      <li><b>WAV 32-bit float</b>: als je daarna nog flink bewerkt;</li>
+      <li><b>MP3</b>: om te delen.</li>
+    </ul>
+  </li>
+  <li>Zet eventueel <b>Normaliseren naar −1 dBFS</b> aan.</li>
+  <li>Kies <span class="btn">Hele edit exporteren</span>, of, als je eerst in de tijdbalk een stuk had geselecteerd, <span class="btn">Alleen selectie</span>.</li>
+</ol>
+</div>
+
+<h2>4. Een overgang fijn afstellen</h2>
+<p>Klik op een crossfade (het vlinder-icoon ⋈ onderaan in de EDIT-baan). Onderaan verschijnt de crossfade-editor met de uitgaande take (A), de nieuwe take (B) en het resultaat.</p>
+<figure>
+  <img src="img-crossfade.png" alt="Crossfade-editor">
+  <figcaption>Crossfade-editor: de witte lijnen zijn de fade-curves, de gele lijn is het knippunt, en de lichte vlakken zijn het deel dat klinkt.</figcaption>
+</figure>
+<table>
+  <tr><th>Wat</th><th>Hoe</th></tr>
+  <tr><td class="k">Luisteren</td><td><span class="btn">▶ Beluister</span> of <kbd>A</kbd>: 2 s vóór tot 2 s na de knip. <kbd>L</kbd> of <i>Herhalen</i> speelt het steeds opnieuw. <i>Voor-/narol</i> stelt die 2 s in. Dubbelklikken op een crossfade werkt ook.</td></tr>
+  <tr><td class="k">Knippunt verschuiven</td><td>Sleep in de figuur, of gebruik de knoppen −10/−1/+1/+10 ms, of <kbd>←</kbd> <kbd>→</kbd> (met <kbd>⇧</kbd> per 10 ms). In de EDIT-baan kun je de crossfade ook slepen.</td></tr>
+  <tr><td class="k">Lengte</td><td>Schuif <i>Lengte</i> of typ ms. Of houd <kbd>⌥</kbd> ingedrukt en sleep de crossfade in de EDIT-baan.</td></tr>
+  <tr><td class="k">Vorm</td><td><b>Equal power</b>: standaard, het best tussen verschillende takes. <b>Lineair</b>: bij (bijna) identiek materiaal. <b>S-curve</b>: zacht in en uit.</td></tr>
+  <tr><td class="k">Holle of zwiepende klank</td><td><span class="btn">Fase uitlijnen</span> schuift B een paar ms op, zodat de golfvormen in de overgang gelijk lopen. Handmatig kan het met <kbd>⌥</kbd>-slepen in de figuur.</td></tr>
+  <tr><td class="k">Volumesprong</td><td><span class="btn">Volume gelijk maken</span>.</td></tr>
+  <tr><td class="k">Heel precies</td><td><span class="btn">Uitlijnen in detail…</span> opent het uitlijnvenster voor deze overgang (hoofdstuk 5).</td></tr>
+  <tr><td class="k">Crossfade weghalen</td><td><kbd>Delete</kbd> zet de lengte op 0 (harde knip).</td></tr>
+</table>
+
+<h2>5. Het uitlijnvenster</h2>
+<p>Open met <span class="btn">Uitlijnen</span> in de werkbalk, met <span class="btn">Uitlijnvenster…</span> bij een take, of met <span class="btn">Uitlijnen in detail…</span> bij een crossfade. Je ziet twee bronnen onder elkaar, en in de onderste rij over elkaar heen, met een zoom tot op losse samples.</p>
+<figure>
+  <img src="img-uitlijnen.png" alt="Uitlijnvenster">
+  <figcaption>Na <kbd>H</kbd> vallen de inzetten van dezelfde noot in take 2 en take 3 precies samen (onderste rij).</figcaption>
+</figure>
+<ul>
+  <li><b>B verschuiven:</b> sleep in rij B of in de onderste rij, of gebruik de knoppen ±10 ms, ±1 ms, ±1 sample, of de pijltjes (zie toetsen).</li>
+  <li><b>Navigeren:</b> sleep in rij A of veeg met twee vingers. <b>Zoomen:</b> knijp, gebruik <kbd>⌘</kbd> + twee vingers, of de knoppen. <span class="btn">Samples</span> zoomt zo ver in dat je elk sample ziet.</li>
+  <li><span class="btn">Automatisch (in beeld)</span> zoekt binnen wat je ziet de beste overlap.</li>
+  <li><span class="btn">▶ A + B samen</span>: goed uitgelijnd klinkt het vol, licht verschoven klinkt het zwiepend of hol.</li>
+  <li>Geopend vanuit een crossfade verschuift alleen de inhoud van die ene clip. Geopend voor takes verschuift de hele take-baan; clips in de edit blijven staan, tenzij je <i>Clips in de edit schuiven mee</i> aanvinkt.</li>
+</ul>
+
+<h2>6. Toetscombinaties</h2>
+<p class="small">⌘ = Command, ⌥ = Option (Alt), ⇧ = Shift. Sneltoetsen werken niet terwijl de cursor in een tekstveld staat; klik dan eerst in de tijdlijn. ⌘Z werkt overal.</p>
+<table>
+  <tr><th>Toets</th><th>Functie</th></tr>
+  <tr class="group"><td colspan="2">Afspelen en navigeren</td></tr>
+  <tr><td class="k"><kbd>Spatie</kbd></td><td>Afspelen / stoppen (met <i>Terug naar start</i> aan: terug naar het startpunt)</td></tr>
+  <tr><td class="k"><kbd>L</kbd></td><td>Geselecteerd stuk of crossfade herhaald afspelen (nogmaals: stop)</td></tr>
+  <tr><td class="k"><kbd>A</kbd></td><td>Geselecteerde crossfade beluisteren (met voor- en narol)</td></tr>
+  <tr><td class="k"><kbd>←</kbd> <kbd>→</kbd></td><td>Afspeelkop 1 s terug/vooruit (<kbd>⇧</kbd>: 0,1 s), als er geen crossfade of uitlijnvenster geselecteerd is</td></tr>
+  <tr><td class="k"><kbd>fn</kbd><kbd>←</kbd> / <kbd>fn</kbd><kbd>→</kbd></td><td>Naar het begin (Home) / het eind (End)</td></tr>
+  <tr><td class="k"><kbd>M</kbd></td><td>Marker op de afspeelkop (ook tijdens het afspelen)</td></tr>
+  <tr><td class="k"><kbd>,</kbd> <kbd>.</kbd></td><td>Naar de vorige / volgende marker</td></tr>
+
+  <tr class="group"><td colspan="2">Montage (bron en doel)</td></tr>
+  <tr><td class="k"><kbd>D</kbd></td><td>Doel in: begin van de wissel in de edit, op de afspeelkop</td></tr>
+  <tr><td class="k"><kbd>⇧</kbd><kbd>D</kbd></td><td>Doel uit: eind van het te vervangen stuk</td></tr>
+  <tr><td class="k"><kbd>H</kbd></td><td>Takes hier uitlijnen: alle takes leggen dezelfde passage onder de afspeelkop</td></tr>
+  <tr><td class="k"><kbd>B</kbd></td><td>Bron in: begin in de gekozen (of solo spelende) take (optioneel)</td></tr>
+  <tr><td class="k"><kbd>⇧</kbd><kbd>B</kbd></td><td>Bron uit (optioneel)</td></tr>
+  <tr><td class="k"><kbd>E</kbd></td><td>Overnemen: vervangen tussen D in en D uit; met alleen D: tot de volgende wissel. Met een selectie in een take-baan: dat stuk op dezelfde tijd in de edit</td></tr>
+  <tr><td class="k"><kbd>⌥</kbd><kbd>E</kbd></td><td>Overnemen en alles na D vervangen</td></tr>
+  <tr><td class="k"><kbd>Esc</kbd></td><td>Selectie en doel-/bronpunten wissen; uitlijnvenster sluiten</td></tr>
+
+  <tr class="group"><td colspan="2">Bewerken</td></tr>
+  <tr><td class="k"><kbd>S</kbd></td><td>Knippen op de afspeelkop (op een nuldoorgang als die optie aan staat)</td></tr>
+  <tr><td class="k"><kbd>Delete</kbd></td><td>Verwijderen, afhankelijk van de selectie: clip weghalen · selectie weghalen en aanschuiven · gat dichten · crossfade naar 0 ms · marker weghalen · take verwijderen (met bevestiging)</td></tr>
+  <tr><td class="k"><kbd>⌥</kbd><kbd>Delete</kbd></td><td>Selectie weghalen en stilte laten</td></tr>
+  <tr><td class="k"><kbd>⌘</kbd><kbd>Z</kbd></td><td>Ongedaan maken</td></tr>
+  <tr><td class="k"><kbd>⇧</kbd><kbd>⌘</kbd><kbd>Z</kbd> of <kbd>⌘</kbd><kbd>Y</kbd></td><td>Opnieuw</td></tr>
+
+  <tr class="group"><td colspan="2">Crossfade geselecteerd</td></tr>
+  <tr><td class="k"><kbd>←</kbd> <kbd>→</kbd></td><td>Knippunt 1 ms verschuiven (<kbd>⇧</kbd>: 10 ms)</td></tr>
+
+  <tr class="group"><td colspan="2">Uitlijnvenster open</td></tr>
+  <tr><td class="k"><kbd>←</kbd> <kbd>→</kbd></td><td>B 1 ms verschuiven (<kbd>⇧</kbd>: 10 ms, <kbd>⌥</kbd>: 1 sample)</td></tr>
+
+  <tr class="group"><td colspan="2">Zoomen</td></tr>
+  <tr><td class="k"><kbd>+</kbd> <kbd>−</kbd></td><td>In- en uitzoomen</td></tr>
+  <tr><td class="k"><kbd>F</kbd></td><td>Alles in beeld (Passend)</td></tr>
+</table>
+
+<h2>7. Muis en trackpad</h2>
+<table>
+  <tr><th>Waar</th><th>Handeling</th><th>Resultaat</th></tr>
+  <tr><td>Overal</td><td>Twee vingers links/rechts</td><td>Beeld schuiven</td></tr>
+  <tr><td>Overal</td><td>Knijpen, of <kbd>⌘</kbd> + twee vingers op/neer</td><td>Zoomen rond de muis</td></tr>
+  <tr><td>Tijdbalk</td><td>Klik</td><td>Afspeelkop zetten</td></tr>
+  <tr><td>Tijdbalk</td><td>Slepen</td><td>Stuk van de edit selecteren (en Doel in/uit zetten)</td></tr>
+  <tr><td>Tijdbalk</td><td>Marker slepen / aanklikken</td><td>Marker verplaatsen / notitie bewerken</td></tr>
+  <tr><td>EDIT</td><td>Clip slepen</td><td>Verplaatsen; vervangt wat eronder ligt, met crossfades</td></tr>
+  <tr><td>EDIT</td><td><kbd>⌘</kbd> + clip slepen</td><td>Invoegen: de rest schuift op</td></tr>
+  <tr><td>EDIT</td><td><kbd>⌥</kbd> + clip slepen</td><td>Inhoud binnen de clip verschuiven (slip)</td></tr>
+  <tr><td>EDIT</td><td>Rand van een clip slepen</td><td>Inkorten of verlengen</td></tr>
+  <tr><td>EDIT</td><td>Crossfade (⋈) slepen</td><td>Knippunt verschuiven</td></tr>
+  <tr><td>EDIT</td><td><kbd>⌥</kbd> + crossfade slepen</td><td>Crossfade langer of korter</td></tr>
+  <tr><td>EDIT</td><td>Leeg stuk slepen</td><td>Beeld schuiven</td></tr>
+  <tr><td>EDIT</td><td>Klik op stilte</td><td>Gat selecteren (<kbd>Delete</kbd> dicht het)</td></tr>
+  <tr><td>EDIT</td><td><kbd>⇧</kbd> + slepen</td><td>Stuk selecteren, net als in de tijdbalk</td></tr>
+  <tr><td>Take-baan</td><td>Klik op de naam</td><td>Take kiezen (voor <kbd>E</kbd> en <kbd>B</kbd>)</td></tr>
+  <tr><td>Take-baan</td><td>Slepen</td><td>Stuk uit de take selecteren (voor <kbd>E</kbd> op dezelfde tijd)</td></tr>
+  <tr><td>Take-baan</td><td><kbd>⌥</kbd> + slepen</td><td>Hele take verschuiven</td></tr>
+</table>
+
+<h2>8. Tips en problemen oplossen</h2>
+<table>
+  <tr><th>Probleem</th><th>Oplossing</th></tr>
+  <tr><td class="k">Iets ging mis</td><td><kbd>⌘</kbd><kbd>Z</kbd>, zo vaak als nodig, of <span class="btn">↶</span> in de werkbalk. Je bronopnames worden nooit aangepast.</td></tr>
+  <tr><td class="k">Een sneltoets doet niets</td><td>De cursor staat waarschijnlijk in een invulveld. Klik in de tijdlijn en probeer opnieuw.</td></tr>
+  <tr><td class="k"><kbd>H</kbd> of <kbd>E</kbd> kiest de verkeerde plek</td><td>Komt voor bij herhalingen of heel zachte inzetten. Wijs de plek zelf aan met <kbd>B</kbd> (en <kbd>⇧</kbd><kbd>B</kbd>), of corrigeer in het uitlijnvenster.</td></tr>
+  <tr><td class="k">Tikje bij een wissel</td><td>Laat <i>Nuldoorgang</i> aan, maak de crossfade iets langer, of gebruik <span class="btn">Fase uitlijnen</span>.</td></tr>
+  <tr><td class="k">Overgang klinkt hol</td><td><span class="btn">Fase uitlijnen</span>, of probeer de vorm <i>Lineair</i> als de takes erg op elkaar lijken.</td></tr>
+  <tr><td class="k">Volumesprong</td><td><span class="btn">Volume gelijk maken</span> bij de crossfade.</td></tr>
+  <tr><td class="k">Clipping bij export</td><td>Zet <i>Normaliseren</i> aan, of verlaag de gain van de luidste clip.</td></tr>
+  <tr><td class="k">Project weg na openen</td><td>Kijk bij <span class="btn">Projecten</span>. Gebruik voor belangrijk werk regelmatig <i>Project als bestand bewaren</i>. Werk bij voorkeur in Chrome of in de geïnstalleerde app.</td></tr>
+  <tr><td class="k">Opslag vol</td><td>Verwijder oude projecten bij <span class="btn">Projecten</span>; de bijbehorende audio wordt dan opgeruimd.</td></tr>
+  <tr><td class="k">Nieuwe versie</td><td>Sluit de app helemaal (<kbd>⌘</kbd><kbd>Q</kbd>) en open hem opnieuw, eventueel twee keer.</td></tr>
+</table>
+<div class="box"><b class="t">Samenwerking met Audacity</b>Monteer in Take Crossfader (takes kiezen, uitlijnen, crossfades) en exporteer als WAV 24-bit of 32-bit float. Werk daarna af in Audacity: EQ, ruisonderdrukking, compressie en het eindniveau.</div>
+
+</body>
+</html>

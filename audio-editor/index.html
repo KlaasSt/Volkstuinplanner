@@ -187,6 +187,7 @@ kbd {
     <label title="Lengte van nieuwe crossfades bij 'Naar edit' en bij het wisselen van take">Std. crossfade <input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</label>
     <span class="sep"></span>
     <button id="exportBtn" title="Edit (of selectie) exporteren als WAV of MP3">Exporteer…</button>
+    <button id="manualBtn" title="Handleiding met werkwijzen en alle toetscombinaties (pdf)">Handleiding</button>
     <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
   </div>
 </header>
@@ -1615,6 +1616,7 @@ function renderInspector() {
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
       <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen ga je verder waar je was; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
     </ol>
+    <p><b>Uitgebreide handleiding</b> met werkwijzen per situatie en alle toetscombinaties: <a href="handleiding.pdf" target="_blank" style="color:var(--accent)">handleiding.pdf</a> (ook via de knop <i>Handleiding</i> in de werkbalk).</p>
     <div class="keys">
       <span><kbd>Spatie</kbd> afspelen / stoppen</span>
       <span><kbd>S</kbd> knippen op afspeelkop</span>
@@ -2796,6 +2798,7 @@ $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
 $('compBtn').onclick = (e) => editAction(e.altKey);
+$('manualBtn').onclick = () => window.open('handleiding.pdf', '_blank');
 $('destBtn').onclick = (e) => setDestPoint(S.playhead, e.shiftKey);
 $('destOutBtn').onclick = () => setDestPoint(S.playhead, true);
 $('srcBtn').onclick = (e) => setSourcePoint(e.shiftKey);
