@@ -1,6 +1,6 @@
 // Service worker van Take Crossfader. Scope: alleen /audio-editor/, los van de Tuinplanner.
 // Verhoog VERSION bij elke wijziging van de app-bestanden.
-const VERSION = "crossfader-20261116o";
+const VERSION = "crossfader-20261116p";
 const ASSETS = [
   "./",
   "./index.html",

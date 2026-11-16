@@ -659,11 +659,92 @@ function swapTake(c, take) {
   });
 }
 
+/* ---------- meerdere clips ---------- */
+/** Ids van de geselecteerde clip(s). */
+function selClipIds() {
+  const s = S.sel;
+  if (!s) return [];
+  if (s.kind === 'clip') return [s.id];
+  if (s.kind === 'clips') return s.ids;
+  return [];
+}
+function selectClips(ids) {
+  ids = [...new Set(ids)].filter((id) => clipOf(id));
+  if (!ids.length) select(null);
+  else if (ids.length === 1) select({ kind: 'clip', id: ids[0] });
+  else select({ kind: 'clips', ids });
+}
+/** ⇧-klik: alle clips tussen de huidige selectie en clip c. */
+function extendSelection(c) {
+  const ids = selClipIds();
+  if (!ids.length) { selectClips([c.id]); return; }
+  const idx = (id) => S.clips.findIndex((x) => x.id === id);
+  const all = [...ids.map(idx), idx(c.id)];
+  const lo = Math.min(...all), hi = Math.max(...all);
+  selectClips(S.clips.slice(lo, hi + 1).map((x) => x.id));
+}
+/** ⌘-klik: clip c toevoegen aan of weghalen uit de selectie. */
+function toggleInSelection(c) {
+  const ids = selClipIds();
+  selectClips(ids.includes(c.id) ? ids.filter((id) => id !== c.id) : [...ids, c.id]);
+}
+function selectAllClips() { if (S.clips.length) selectClips(S.clips.map((c) => c.id)); }
+
+/**
+ * Na het verplaatsen van een groep clips: wat de groep raakt wordt vervangen (zoals bij één clip),
+ * en waar de groep aansluit op een buur komt een standaard-crossfade. Binnen de groep verandert niets.
+ */
+function resolveGroupDrop(ids) {
+  const set = new Set(ids), group = S.clips.filter((c) => set.has(c.id));
+  if (!group.length) return;
+  const s = Math.min(...group.map((c) => c.start)), e = Math.max(...group.map(end)), out = [...group];
+  for (const c of S.clips) {
+    if (set.has(c.id)) continue;
+    const ce = end(c);
+    if (ce <= s + 1e-9 || c.start >= e - 1e-9) { out.push(c); continue; }
+    if (c.start >= s - 1e-9 && ce <= e + 1e-9) continue;
+    if (c.start < s && ce > e) {
+      out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });
+      out.push({ ...c, id: newId(), start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
+      continue;
+    }
+    const first = c.start < s ? group.reduce((a, b) => (a.start <= b.start ? a : b)) : group.reduce((a, b) => (end(a) >= end(b) ? a : b));
+    const ov = c.start < s ? ce - s : e - c.start;
+    if (ov < Math.min(c.dur, first.dur) / 2) { out.push(c); continue; }
+    if (c.start < s) out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });
+    else out.push({ ...c, start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
+  }
+  S.clips = out;
+  normalize();
+  const g = S.clips.filter((c) => set.has(c.id));
+  const firstC = g[0], lastC = g.reduce((a, b) => (end(a) >= end(b) ? a : b));
+  const i = S.clips.indexOf(firstC), p = S.clips[i - 1];
+  if (p && !set.has(p.id) && Math.abs(end(p) - firstC.start) < 1e-6) setXfLen(p, firstC, S.defXf);
+  const k = S.clips.indexOf(lastC), n = S.clips[k + 1];
+  if (n && !set.has(n.id) && Math.abs(end(lastC) - n.start) < 1e-6) setXfLen(lastC, n, S.defXf);
+}
+
+/** Verschuif de geselecteerde clips (en de markers in dat stuk) samen met dt seconden. */
+function shiftClips(ids, dt) {
+  const set = new Set(ids), group = S.clips.filter((c) => set.has(c.id));
+  if (!group.length || !dt) return;
+  const s = Math.min(...group.map((c) => c.start)), e = Math.max(...group.map(end));
+  dt = Math.max(dt, -s);
+  if (Math.abs(dt) < 1e-6) { toast('De selectie staat al aan het begin'); return; }
+  mutate(() => {
+    for (const c of group) c.start += dt;
+    for (const mk of S.markers) if (mk.t >= s - 1e-9 && mk.t <= e + 1e-9) mk.t = Math.max(0, mk.t + dt);
+    resolveGroupDrop(ids);
+    selectClips(ids);
+  });
+}
+
 function deleteSelection(leaveGap = false) {
   const s = S.sel;
   if (!s) return;
-  if (s.kind === 'clip') {
-    mutate(() => { S.clips = S.clips.filter((c) => c.id !== s.id); S.sel = null; });
+  if (s.kind === 'clip' || s.kind === 'clips') {
+    const ids = new Set(selClipIds());
+    mutate(() => { S.clips = S.clips.filter((c) => !ids.has(c.id)); S.sel = null; });
   } else if (s.kind === 'junction') {
     const j = junctionOf(s.a, s.b);
     if (j) mutate(() => setXfLen(j.a, j.b, 0));
@@ -707,6 +788,10 @@ function validateSel() {
   const s = S.sel;
   if (!s) return;
   if (s.kind === 'clip' && !clipOf(s.id)) S.sel = null;
+  else if (s.kind === 'clips') {
+    s.ids = s.ids.filter((id) => clipOf(id));
+    if (!s.ids.length) S.sel = null; else if (s.ids.length === 1) S.sel = { kind: 'clip', id: s.ids[0] };
+  }
   else if (s.kind === 'junction' && !junctionOf(s.a, s.b)) S.sel = null;
   else if (s.kind === 'take' && !takeOf(s.id)) S.sel = null;
   else if (s.kind === 'gap' && !gapAt(s.t)) S.sel = null;
@@ -1183,7 +1268,7 @@ function drawBase() {
   g.fillStyle = '#2a2f38'; g.fillRect(0, RULER - 1, W, 1); g.fillRect(0, RULER + EDIT_H - 1, W, 1);
 
   // edit lane
-  const env = envelopes();
+  const env = envelopes(), selIds = selClipIds();
   const y = RULER + 6, h = EDIT_H - 12;
   if (!S.clips.length) {
     g.fillStyle = '#5a6272'; g.font = '13px system-ui, sans-serif'; g.textBaseline = 'middle';
@@ -1193,7 +1278,7 @@ function drawBase() {
     const tk = takeOf(c.takeId), e = env[i];
     const x0 = px(c.start), x1 = px(end(c));
     if (x1 < -2 || x0 > W + 2) return;
-    const sel = S.sel && S.sel.kind === 'clip' && S.sel.id === c.id;
+    const sel = selIds.includes(c.id);
     g.fillStyle = hexA(tk.color, sel ? 0.22 : 0.13); g.fillRect(x0, y, x1 - x0, h);
     g.fillStyle = hexA(tk.color, sel ? 0.75 : 0.5); g.fillRect(x0, y, x1 - x0, 15);
     g.save();
@@ -1564,6 +1649,7 @@ function renderInspector() {
     if (j) return inspectJunction(el, j);
   }
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
+  if (s && s.kind === 'clips') return inspectClips(el, s.ids);
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
   if (s && s.kind === 'projects') { inspectProjects(el); return; }
   if (s && s.kind === 'export') return inspectExport(el);
@@ -1639,6 +1725,8 @@ function renderInspector() {
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
       <span><kbd>1</kbd> ✥ verplaatsen · <kbd>2</kbd> ↖ selecteren · <kbd>3</kbd> ✋ hand</span>
+      <span><kbd>⌘A</kbd> alle clips · <kbd>⇧</kbd>-klik reeks · <kbd>⌘</kbd>-klik losse clip</span>
+      <span><kbd>⌥</kbd><kbd>←</kbd> <kbd>→</kbd> selectie 10 ms verschuiven (<kbd>⇧</kbd>: 1 s)</span>
       <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
       <span><kbd>M</kbd> marker zetten · <kbd>,</kbd> <kbd>.</kbd> vorige/volgende marker</span>
       <span><kbd>L</kbd> geselecteerd stuk of crossfade herhalen</span>
@@ -1745,6 +1833,8 @@ function inspectClip(el, c) {
     <div class="row">
       <button id="clSplit">Knip op afspeelkop <kbd>S</kbd></button>
       <button id="clGap" title="Schuift deze clip en alles erna naar links, tot tegen de vorige clip of 0:00">Gat ervoor dichten</button>
+      <button id="clAfter" title="Selecteert deze clip en alle clips erna, om ze samen te verschuiven">Selecteer deze en alles erna</button>
+      <button id="clAll" title="Selecteert de hele edit (⌘A)">Selecteer alles</button>
       ${junctions().some((j) => j.b === c) ? '<button id="clLevel" title="Past de gain van deze clip aan zodat hij rond de overgang even luid is als de clip ervoor">Volume gelijk aan vorige clip</button>' : ''}
       <button id="clPlay">▶ Speel vanaf clip</button>
       <button id="clDel" class="danger">Verwijder clip</button>
@@ -1762,9 +1852,39 @@ function inspectClip(el, c) {
   $('clFo').onchange = (e) => mutate(() => { c.fadeOut = Math.max(0, +e.target.value || 0) / 1000; });
   $('clSplit').onclick = () => splitAt(S.playhead);
   $('clGap').onclick = () => closeGapBefore(c);
+  $('clAfter').onclick = () => selectClips(S.clips.filter((x) => x.start >= c.start - 1e-9).map((x) => x.id));
+  $('clAll').onclick = selectAllClips;
   if ($('clLevel')) $('clLevel').onclick = () => matchLevel(junctions().find((j) => j.b === c));
   $('clPlay').onclick = () => play(c.start);
   $('clDel').onclick = () => deleteSelection();
+}
+
+function shiftRow(prefix) {
+  return `<div class="row">
+      <span class="group">Verschuiven <button data-sh="-1">← 1 s</button><button data-sh="-0.1">← 0,1 s</button><button data-sh="-0.01">← 10 ms</button><button data-sh="0.01">10 ms →</button><button data-sh="0.1">0,1 s →</button><button data-sh="1">1 s →</button></span>
+      <label>met <input type="number" id="${prefix}By" step="0.01" value="1" style="width:80px"> s <button id="${prefix}Go">Verschuif</button></label>
+      <label>beginnen op <input type="number" id="${prefix}At" step="0.01" min="0" style="width:80px"> s <button id="${prefix}AtGo">Zet</button></label>
+    </div>`;
+}
+function bindShiftRow(el, prefix, ids) {
+  const first = () => Math.min(...S.clips.filter((c) => ids.includes(c.id)).map((c) => c.start));
+  el.querySelectorAll('[data-sh]').forEach((b) => { b.onclick = () => shiftClips(ids, +b.dataset.sh); });
+  $(prefix + 'Go').onclick = () => shiftClips(ids, +$(prefix + 'By').value || 0);
+  $(prefix + 'At').value = first().toFixed(3);
+  $(prefix + 'AtGo').onclick = () => shiftClips(ids, Math.max(0, +$(prefix + 'At').value || 0) - first());
+}
+function inspectClips(el, ids) {
+  const g = S.clips.filter((c) => ids.includes(c.id));
+  const a = Math.min(...g.map((c) => c.start)), b = Math.max(...g.map(end));
+  el.innerHTML = `
+    <div class="insp-head"><h2>${g.length} clips geselecteerd</h2><span>${fmt(a)} – ${fmt(b)}${g.length === S.clips.length ? ' · de hele edit' : ''}</span></div>
+    ${shiftRow('gr')}
+    <div class="row">
+      <button id="grDel" class="danger">Verwijder <kbd>Delete</kbd></button>
+      <span class="hint">Met ✥ Verplaatsen kun je een van de geselecteerde clips slepen: ze schuiven samen op, met hun crossfades en fades, en markers in dit stuk schuiven mee. <kbd>⌥</kbd><kbd>←</kbd>/<kbd>→</kbd> verschuift 10 ms (met <kbd>⇧</kbd> 1 s). <kbd>⌘A</kbd> selecteert alles, <kbd>⇧</kbd>-klik een reeks, <kbd>⌘</kbd>-klik een losse clip erbij of eraf.</span>
+    </div>`;
+  bindShiftRow(el, 'gr', ids);
+  $('grDel').onclick = () => deleteSelection();
 }
 
 function inspectTake(el, t) {
@@ -2574,7 +2694,7 @@ cv.addEventListener('pointerdown', (e) => {
   const { x, y } = pos(e);
   cv.setPointerCapture(e.pointerId);
   const t = tAt(x), lane = laneAt(y);
-  const d = { x0: x, moved: false, t0: t };
+  const d = { x0: x, moved: false, t0: t, shift: e.shiftKey, meta: e.metaKey };
   const mHit = lane.kind === 'ruler' ? S.markers.find((m) => Math.abs(px(m.t) - x) < 7) : null;
   if (mHit) { d.type = 'marker'; d.m = mHit; d.ot = mHit.t; select({ kind: 'marker', id: mHit.id }); }
   else if (lane.kind === 'ruler' || (lane.kind === 'edit' && (e.shiftKey || S.tool === 'select'))) {   // slepen = selectie in de edit
@@ -2595,7 +2715,15 @@ cv.addEventListener('pointerdown', (e) => {
     } else {
       d.type = h.type === 'body' ? (e.altKey ? 'slip' : 'move') : h.type;
       d.c = h.c; d.o = { ...h.c };
-      if (!(S.sel && S.sel.kind === 'clip' && S.sel.id === h.c.id)) select({ kind: 'clip', id: h.c.id });
+      const ids = selClipIds();
+      if (d.type === 'move' && ids.length > 1 && ids.includes(h.c.id) && !e.metaKey) {
+        // meerdere clips geselecteerd: samen verplaatsen
+        d.type = 'moveGroup'; d.ids = ids;
+        d.go = new Map(S.clips.filter((c) => ids.includes(c.id)).map((c) => [c.id, c.start]));
+        d.gs = Math.min(...d.go.values()); d.ge = Math.max(...S.clips.filter((c) => ids.includes(c.id)).map(end));
+        d.mk = S.markers.filter((m) => m.t >= d.gs - 1e-9 && m.t <= d.ge + 1e-9).map((m) => [m, m.t]);
+      } else if (e.metaKey && d.type === 'move') d.metaClick = true;     // ⌘-klik: selectie aanvullen (⌘-slepen: invoegen)
+      else if (!(S.sel && S.sel.kind === 'clip' && S.sel.id === h.c.id)) select({ kind: 'clip', id: h.c.id });
     }
   } else if (lane.kind === 'take') {
     d.take = lane.take;
@@ -2614,7 +2742,8 @@ cv.addEventListener('pointermove', (e) => {
   if (!d.moved && Math.abs(dx) < 3) return;
   if (!d.moved) {
     d.moved = true;
-    if (['move', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type)) pushUndo();
+    if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type)) pushUndo();
+    if (d.type === 'move' && d.metaClick) select({ kind: 'clip', id: d.c.id });
   }
   const dt = dx / S.pps, sh = e.shiftKey;
   const c = d.c, o = d.o;
@@ -2634,6 +2763,24 @@ cv.addEventListener('pointermove', (e) => {
       S.view = Math.max(0, d.view0 - dx / S.pps);
       updateScroll();
       break;
+    case 'moveGroup': {
+      const set = new Set(d.ids);
+      const snapG = (t) => {
+        if (!S.snap || sh) return t;
+        const cands = [0, S.playhead];
+        S.clips.forEach((c) => { if (!set.has(c.id)) cands.push(c.start, end(c)); });
+        let best = t, bd = 8 / S.pps;
+        for (const v of cands) { const q = Math.abs(v - t); if (q < bd) { bd = q; best = v; } }
+        return best;
+      };
+      let ns = d.gs + dt;
+      const a = snapG(ns), b = snapG(d.ge + dt) - (d.ge - d.gs);
+      ns = Math.abs(a - ns) <= Math.abs(b - ns) ? a : b;
+      const delta = Math.max(0, ns) - d.gs;
+      for (const c of S.clips) if (set.has(c.id)) c.start = d.go.get(c.id) + delta;
+      for (const [m, t0] of d.mk) m.t = Math.max(0, t0 + delta);
+      break;
+    }
     case 'move': {
       let ns = o.start + dt;
       const a = snapT(ns, c, sh), b = snapT(ns + o.dur, c, sh) - o.dur;
@@ -2717,8 +2864,9 @@ function endDrag(e) {
     S.dirty = true; buildHeads(); renderInspector(); updateButtons();
     return;
   }
+  if (!d.moved && d.metaClick) { toggleInSelection(d.c); S.dirty = true; return; }
   if (!d.moved) {
-    if (['move', 'slip', 'trimL', 'trimR', 'range'].includes(d.type)) S.playhead = Math.max(0, d.t0);
+    if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'range'].includes(d.type)) S.playhead = Math.max(0, d.t0);
     if (d.type === 'range') { S.range = null; renderInspector(); updateButtons(); }
     if (S.playing && d.type !== 'roll' && d.type !== 'xflen') restartAtPlayhead();
   } else if (d.type === 'range') {
@@ -2728,6 +2876,7 @@ function endDrag(e) {
     if (S.playing) restartAtPlayhead();
   } else {
     if (d.type === 'move') resolveDrop(d.c, !!(e && (e.metaKey || e.ctrlKey)));
+    if (d.type === 'moveGroup') { resolveGroupDrop(d.ids); selectClips(d.ids); }
     if (d.type === 'sync') { const ns = d.take.sync; d.take.sync = d.os; setTakeSync(d.take, ns); }
     afterEdit();
   }
@@ -2754,6 +2903,8 @@ function clickSelect(d) {
   const h = d.hit;
   if (d.take) select({ kind: 'take', id: d.take.id });
   else if (h && h.type === 'junction') select({ kind: 'junction', a: h.j.a.id, b: h.j.b.id });
+  else if (h && h.c && d.shift) extendSelection(h.c);
+  else if (h && h.c && d.meta) toggleInSelection(h.c);
   else if (h && h.c) select({ kind: 'clip', id: h.c.id });
   else if (gapAt(d.t0)) select({ kind: 'gap', t: d.t0 });
   else select(null);
@@ -2873,6 +3024,7 @@ document.addEventListener('keydown', (e) => {
   if (k === ' ') { e.preventDefault(); if (e.target.blur) e.target.blur(); togglePlay(); return; }
   if (mod && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && k.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (mod && k.toLowerCase() === 'a') { e.preventDefault(); selectAllClips(); return; }
   if (mod) return;
   const sj = S.sel && S.sel.kind === 'junction' ? junctionOf(S.sel.a, S.sel.b) : null;
   switch (k) {
@@ -2899,7 +3051,9 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowLeft': case 'ArrowRight': {
       e.preventDefault();
       const dir = k === 'ArrowLeft' ? -1 : 1;
-      if (S.sel && S.sel.kind === 'align') {
+      if (e.altKey && selClipIds().length && !(S.sel && S.sel.kind === 'align')) {
+        shiftClips(selClipIds(), dir * (e.shiftKey ? 1 : 0.01));   // ⌥←/⌥→: 10 ms, met ⇧: 1 s
+      } else if (S.sel && S.sel.kind === 'align') {
         const sr = S.ac ? S.ac.sampleRate : 48000;
         nudgeAlign(dir * (e.altKey ? 1 / sr : e.shiftKey ? 0.01 : 0.001));
       } else if (sj) mutate(() => roll(sj.a, sj.b, dir * (e.shiftKey ? 0.01 : 0.001)));
