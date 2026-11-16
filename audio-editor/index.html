@@ -567,8 +567,18 @@ function restore(str) {
   o.sync.forEach(([id, s]) => { const t = takeOf(id); if (t) t.sync = s; });
   afterEdit();
 }
-function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
-function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
+function undo() {
+  if (S.drag) return;
+  if (!S.undo.length) { toast('Niets meer om ongedaan te maken'); return; }
+  S.redo.push(snapshot()); restore(S.undo.pop());
+  toast(`Ongedaan gemaakt${S.undo.length ? ` (nog ${S.undo.length} stap${S.undo.length === 1 ? '' : 'pen'} terug mogelijk)` : ''}`);
+}
+function redo() {
+  if (S.drag) return;
+  if (!S.redo.length) { toast('Niets om opnieuw te doen'); return; }
+  S.undo.push(snapshot()); restore(S.redo.pop());
+  toast('Opnieuw uitgevoerd');
+}
 
 function mutate(fn) { pushUndo(); fn(); afterEdit(); }
 
@@ -1249,7 +1259,7 @@ function renderInspector() {
       <span><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> ongedaan maken</span>
       <span><kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
       <span>Ctrl/⌘ + scrollwiel: zoomen</span>
-      <span>Shift + scrollwiel: scrollen</span>
+      <span>Beeld schuiven: sleep een leeg stuk van de EDIT-baan, veeg met twee vingers op het trackpad, Shift + scrollwiel of gebruik de schuifbalk onder de sporen</span>
       <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
@@ -1444,6 +1454,8 @@ function snapT(t, exclude, shift) {
 
 cv.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
+  // Klikken in de tijdlijn haalt de cursor uit een invulveld, zodat sneltoetsen (⌘Z, spatie) weer werken.
+  if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
   const { x, y } = pos(e);
   cv.setPointerCapture(e.pointerId);
   const t = tAt(x), lane = laneAt(y);
@@ -1451,7 +1463,7 @@ cv.addEventListener('pointerdown', (e) => {
   if (lane.kind === 'ruler' || lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
-    if (!h) { d.type = 'playhead'; S.playhead = Math.max(0, t); select(null); }
+    if (!h) { d.type = 'pan'; d.view0 = S.view; select(null); }   // leeg vlak: slepen schuift het beeld, klikken zet de afspeelkop
     else if (h.type === 'junction') {
       d.type = e.altKey ? 'xflen' : 'roll'; d.a = h.j.a; d.b = h.j.b; d.oa = { ...h.j.a }; d.ob = { ...h.j.b }; d.len = h.j.len;
       select({ kind: 'junction', a: h.j.a.id, b: h.j.b.id });
@@ -1483,6 +1495,10 @@ cv.addEventListener('pointermove', (e) => {
   const c = d.c, o = d.o;
   switch (d.type) {
     case 'playhead': S.playhead = Math.max(0, tAt(x)); break;
+    case 'pan':
+      S.view = Math.max(0, d.view0 - dx / S.pps);
+      updateScroll();
+      break;
     case 'move': {
       let ns = o.start + dt;
       const a = snapT(ns, c, sh), b = snapT(ns + o.dur, c, sh) - o.dur;
@@ -1537,6 +1553,11 @@ function endDrag(e) {
   const d = S.drag;
   if (!d || d.xf) return;
   S.drag = null;
+  if (d.type === 'pan') {
+    if (!d.moved) { S.playhead = Math.max(0, d.t0); if (S.playing) restartAtPlayhead(); }
+    S.dirty = true;
+    return;
+  }
   if (!d.moved) {
     if (['move', 'slip', 'trimL', 'trimR', 'range'].includes(d.type)) S.playhead = Math.max(0, d.t0);
     if (d.type === 'range') { S.range = null; renderInspector(); updateButtons(); }
@@ -1573,7 +1594,8 @@ function hoverCursor(x, y, alt) {
   if (lane.kind === 'ruler') cur = 'pointer';
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
-    if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'grab') : 'ew-resize';
+    if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
+    else cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
   } else if (lane.kind === 'take') cur = alt ? 'ew-resize' : 'text';
   cv.style.cursor = cur;
 }
@@ -1629,11 +1651,15 @@ $('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 
 $('exportBtn').onclick = exportWav;
 
 document.addEventListener('keydown', (e) => {
+  const k = e.key, mod = e.ctrlKey || e.metaKey;
+  // ⌘Z / Ctrl+Z werkt overal, ook als de cursor nog in een getalveld staat (alleen in een tekstveld niet).
+  if (mod && k.toLowerCase() === 'z' && !e.target.matches('input[type=text], textarea')) {
+    e.preventDefault(); if (e.target.blur) e.target.blur(); e.shiftKey ? redo() : undo(); return;
+  }
   if (e.target.matches('input[type=text], input[type=number], select, textarea')) {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
-  const k = e.key, mod = e.ctrlKey || e.metaKey;
   if (k === ' ') { e.preventDefault(); if (e.target.blur) e.target.blur(); togglePlay(); return; }
   if (mod && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && k.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
