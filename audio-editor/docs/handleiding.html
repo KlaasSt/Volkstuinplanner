@@ -36,6 +36,8 @@
   table { width: 100%; border-collapse: collapse; margin: 1mm 0 4mm; break-inside: auto; }
   th, td { text-align: left; vertical-align: top; padding: 1.3mm 2mm; border-bottom: 1px solid var(--line); }
   tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+  table.keep { break-inside: avoid; }
   th { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border-bottom: 1.5px solid #b8c0cc; }
   td.k { width: 34%; white-space: nowrap; }
   .group { font-weight: 700; background: var(--soft); }
@@ -96,13 +98,24 @@
   <figcaption>De EDIT bestaat hier uit take 1, dan take 2 (vanaf 0:05) en daarna take 3 (vanaf 0:15). De vlinder-iconen ⋈ zijn de crossfades. Geel: een stuk dat vervangen gaat worden (D in – D uit). Groen in de tijdbalk: een marker met notitie. Rood: de afspeelkop. In de take-banen is het lichtere deel het stuk dat in de edit gebruikt wordt.</figcaption>
 </figure>
 <table>
-  <tr><th>Onderdeel</th><th>Wat het doet</th></tr>
+  <thead><tr><th>Onderdeel</th><th>Wat het doet</th></tr></thead>
   <tr><td class="k">Tijdbalk (bovenaan)</td><td>Klik = afspeelkop zetten. Slepen = een stuk van de edit selecteren (om te vervangen, weg te halen, te herhalen of te exporteren). Markers verschijnen hier.</td></tr>
   <tr><td class="k">EDIT-baan</td><td>Je eindversie. Clips, crossfades (⋈), fades, en de gele doelpunten.</td></tr>
   <tr><td class="k">Take-banen</td><td>De originele opnames. Klik op de naam om een take te kiezen; <span class="btn">▶ solo</span> speelt die take alleen.</td></tr>
   <tr><td class="k">Paneel onderaan</td><td>Verandert met wat je selecteert: clip, crossfade, take, selectie, marker, uitlijnvenster, exporteren of projecten. Met niets geselecteerd staat hier een korte uitleg.</td></tr>
   <tr><td class="k">Werkbalk</td><td>Projecten, importeren, afspelen, <i>Terug naar start</i>, knippen, Doel/Bron-punten, <i>Takes hier uitlijnen</i>, <i>Overnemen</i>, markers, uitlijnvenster, ongedaan maken, zoom, Snap, Nuldoorgang, standaard-crossfade en exporteren.</td></tr>
 </table>
+<div style="break-inside: avoid">
+<h3>Gereedschap</h3>
+<p>Links in de werkbalk kies je wat slepen in de EDIT- en take-banen doet. Je keuze wordt onthouden.</p>
+<table class="keep">
+  <thead><tr><th>Gereedschap</th><th>Slepen</th><th>Klikken</th></tr></thead>
+  <tr><td class="k"><b>✥ Verplaatsen</b> <kbd>1</kbd></td><td>Boven een clip: clip verplaatsen. Randen: trimmen. Crossfade: knippunt verschuiven. Leeg stuk: beeld schuiven.</td><td>Selecteren en afspeelkop zetten</td></tr>
+  <tr><td class="k"><b>↖ Selecteren</b> <kbd>2</kbd></td><td>In de EDIT-baan: een stuk selecteren (zet ook Doel in/uit). Clips verschuiven niet.</td><td>Selecteren en afspeelkop zetten</td></tr>
+  <tr><td class="k"><b>✋ Hand</b> <kbd>3</kbd></td><td>Overal in de banen: beeld schuiven. Clips verschuiven niet.</td><td>Selecteren en afspeelkop zetten</td></tr>
+</table>
+<p>Werk je vooral met <kbd>D</kbd>, <kbd>H</kbd> en <kbd>E</kbd>, kies dan <b>↖ Selecteren</b> of <b>✋ Hand</b>. Dan kun je geen clip per ongeluk verslepen.</p>
+</div>
 <h3>Instellingen in de werkbalk</h3>
 <ul>
   <li><b>↩ Terug naar start</b>: na stoppen springt de afspeelkop terug naar waar je begon.</li>
@@ -224,7 +237,7 @@
   <figcaption>Crossfade-editor: de witte lijnen zijn de fade-curves, de gele lijn is het knippunt, en de lichte vlakken zijn het deel dat klinkt.</figcaption>
 </figure>
 <table>
-  <tr><th>Wat</th><th>Hoe</th></tr>
+  <thead><tr><th>Wat</th><th>Hoe</th></tr></thead>
   <tr><td class="k">Luisteren</td><td><span class="btn">▶ Beluister</span> of <kbd>A</kbd>: 2 s vóór tot 2 s na de knip. <kbd>L</kbd> of <i>Herhalen</i> speelt het steeds opnieuw. <i>Voor-/narol</i> stelt die 2 s in. Dubbelklikken op een crossfade werkt ook.</td></tr>
   <tr><td class="k">Knippunt verschuiven</td><td>Sleep in de figuur, of gebruik de knoppen −10/−1/+1/+10 ms, of <kbd>←</kbd> <kbd>→</kbd> (met <kbd>⇧</kbd> per 10 ms). In de EDIT-baan kun je de crossfade ook slepen.</td></tr>
   <tr><td class="k">Lengte</td><td>Schuif <i>Lengte</i> of typ ms. Of houd <kbd>⌥</kbd> ingedrukt en sleep de crossfade in de EDIT-baan.</td></tr>
@@ -249,10 +262,10 @@
   <li>Geopend vanuit een crossfade verschuift alleen de inhoud van die ene clip. Geopend voor takes verschuift de hele take-baan; clips in de edit blijven staan, tenzij je <i>Clips in de edit schuiven mee</i> aanvinkt.</li>
 </ul>
 
-<h2>6. Toetscombinaties</h2>
+<h2 class="page-break">6. Toetscombinaties</h2>
 <p class="small">⌘ = Command, ⌥ = Option (Alt), ⇧ = Shift. Sneltoetsen werken niet terwijl de cursor in een tekstveld staat; klik dan eerst in de tijdlijn. ⌘Z werkt overal.</p>
 <table>
-  <tr><th>Toets</th><th>Functie</th></tr>
+  <thead><tr><th>Toets</th><th>Functie</th></tr></thead>
   <tr class="group"><td colspan="2">Afspelen en navigeren</td></tr>
   <tr><td class="k"><kbd>Spatie</kbd></td><td>Afspelen / stoppen (met <i>Terug naar start</i> aan: terug naar het startpunt)</td></tr>
   <tr><td class="k"><kbd>L</kbd></td><td>Geselecteerd stuk of crossfade herhaald afspelen (nogmaals: stop)</td></tr>
@@ -271,6 +284,9 @@
   <tr><td class="k"><kbd>E</kbd></td><td>Overnemen: vervangen tussen D in en D uit; met alleen D: tot de volgende wissel. Met een selectie in een take-baan: dat stuk op dezelfde tijd in de edit</td></tr>
   <tr><td class="k"><kbd>⌥</kbd><kbd>E</kbd></td><td>Overnemen en alles na D vervangen</td></tr>
   <tr><td class="k"><kbd>Esc</kbd></td><td>Selectie en doel-/bronpunten wissen; uitlijnvenster sluiten</td></tr>
+
+  <tr class="group"><td colspan="2">Gereedschap</td></tr>
+  <tr><td class="k"><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>✥ Verplaatsen · ↖ Selecteren · ✋ Hand</td></tr>
 
   <tr class="group"><td colspan="2">Bewerken</td></tr>
   <tr><td class="k"><kbd>S</kbd></td><td>Knippen op de afspeelkop (op een nuldoorgang als die optie aan staat)</td></tr>
@@ -291,8 +307,9 @@
 </table>
 
 <h2>7. Muis en trackpad</h2>
+<p class="small">Clips verplaatsen, trimmen en crossfades slepen in de EDIT-baan werkt met het gereedschap ✥ Verplaatsen. Met ↖ Selecteren selecteert slepen een stuk; met ✋ Hand schuift slepen het beeld.</p>
 <table>
-  <tr><th>Waar</th><th>Handeling</th><th>Resultaat</th></tr>
+  <thead><tr><th>Waar</th><th>Handeling</th><th>Resultaat</th></tr></thead>
   <tr><td>Overal</td><td>Twee vingers links/rechts</td><td>Beeld schuiven</td></tr>
   <tr><td>Overal</td><td>Knijpen, of <kbd>⌘</kbd> + twee vingers op/neer</td><td>Zoomen rond de muis</td></tr>
   <tr><td>Tijdbalk</td><td>Klik</td><td>Afspeelkop zetten</td></tr>
@@ -314,8 +331,9 @@
 
 <h2>8. Tips en problemen oplossen</h2>
 <table>
-  <tr><th>Probleem</th><th>Oplossing</th></tr>
+  <thead><tr><th>Probleem</th><th>Oplossing</th></tr></thead>
   <tr><td class="k">Iets ging mis</td><td><kbd>⌘</kbd><kbd>Z</kbd>, zo vaak als nodig, of <span class="btn">↶</span> in de werkbalk. Je bronopnames worden nooit aangepast.</td></tr>
+  <tr><td class="k">Clip per ongeluk verschoven</td><td><kbd>⌘</kbd><kbd>Z</kbd>. Kies daarna het gereedschap ↖ Selecteren (<kbd>2</kbd>) of ✋ Hand (<kbd>3</kbd>): dan blijven clips staan.</td></tr>
   <tr><td class="k">Een sneltoets doet niets</td><td>De cursor staat waarschijnlijk in een invulveld. Klik in de tijdlijn en probeer opnieuw.</td></tr>
   <tr><td class="k"><kbd>H</kbd> of <kbd>E</kbd> kiest de verkeerde plek</td><td>Komt voor bij herhalingen of heel zachte inzetten. Wijs de plek zelf aan met <kbd>B</kbd> (en <kbd>⇧</kbd><kbd>B</kbd>), of corrigeer in het uitlijnvenster.</td></tr>
   <tr><td class="k">Tikje bij een wissel</td><td>Laat <i>Nuldoorgang</i> aan, maak de crossfade iets langer, of gebruik <span class="btn">Fase uitlijnen</span>.</td></tr>
