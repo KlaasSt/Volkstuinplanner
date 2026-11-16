@@ -246,7 +246,7 @@ const S = {
   playing: null,
   undo: [], redo: [],
   tool: 'move',
-  markers: [], exportRate: 'project', exportFmt: 'wav24', normalize: false, normDb: -1,
+  markers: [], dither: 'auto', exportRate: 'project', exportFmt: 'wav24', normalize: false, normDb: -1,
   zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: false, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
@@ -1027,13 +1027,14 @@ function loadLame() {
   return lamePromise;
 }
 
-async function encodeMp3(buf, kbps) {
+async function encodeMp3(buf, kbps, dither = 'auto') {
   const lame = await loadLame();
   const nch = Math.min(2, buf.numberOfChannels), sr = buf.sampleRate;
   const enc = new lame.Mp3Encoder(nch, sr, kbps);
   const chs = []; for (let c = 0; c < nch; c++) chs.push(buf.getChannelData(c));
   const BLOCK = 1152 * 20, parts = [];
-  const toI16 = (f, a, n) => { const o = new Int16Array(n); for (let i = 0; i < n; i++) { const v = clamp(f[a + i], -1, 1); o[i] = v < 0 ? v * 32768 : v * 32767; } return o; };
+  const to16 = make16(dither);
+  const toI16 = (f, a, n) => { const o = new Int16Array(n); for (let i = 0; i < n; i++) o[i] = to16(f[a + i]); return o; };
   for (let a = 0; a < buf.length; a += BLOCK) {
     const n = Math.min(BLOCK, buf.length - a);
     const L = toI16(chs[0], a, n), R = nch > 1 ? toI16(chs[1], a, n) : null;
@@ -1117,7 +1118,7 @@ async function exportAudio(a = 0, b = editEnd(), suffix = '') {
       normInfo = ` · genormaliseerd (${g >= 1 ? '+' : ''}${(20 * Math.log10(g)).toFixed(1)} dB)`;
       peak = peakOf();
     }
-    const blob = fmtDef.ext === 'mp3' ? await encodeMp3(buf, fmtDef.kbps) : encodeWav(buf, fmtDef.bits);
+    const blob = fmtDef.ext === 'mp3' ? await encodeMp3(buf, fmtDef.kbps, S.dither) : encodeWav(buf, fmtDef.bits, S.dither);
     const name = target.name;
     busy(true, 'Opslaan…');
     await saveToTarget(target, blob);
@@ -1139,6 +1140,7 @@ function inspectExport(el) {
     <div class="row">
       <label>Formaat <select id="exFmt">${Object.entries(EXPORT_FORMATS).map(([k, v]) => `<option value="${k}"${k === S.exportFmt ? ' selected' : ''}>${v.label}</option>`).join('')}</select></label>
       <label>Samplefrequentie <select id="exRate">${[['project', `zoals het project (${S.ac ? khz(S.ac.sampleRate) : '?'})`], ['44100', '44,1 kHz (cd)'], ['48000', '48 kHz (video)'], ['96000', '96 kHz']].map(([k, l]) => `<option value="${k}"${k === String(S.exportRate) ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${S.exportFmt === 'wav16' || S.exportFmt.startsWith('mp3') ? `<label title="Dither: een heel zachte ruis die afrondingsvervorming bij 16-bit voorkomt (vooral hoorbaar in lange, zachte uitfades)">Dither <select id="exDither">${[['auto', 'Automatisch (aanbevolen)'], ['always', 'Altijd (TPDF)'], ['off', 'Uit']].map(([k, l]) => `<option value="${k}"${k === S.dither ? ' selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
       <label title="Zet de luidste piek op dit niveau. −1 dBFS laat wat ruimte voor MP3/streaming."><input type="checkbox" id="exNorm"${S.normalize ? ' checked' : ''}> Normaliseren naar</label>
       <label><input type="number" id="exNormDb" value="${S.normDb}" step="0.5" min="-24" max="0" style="width:64px"> dBFS</label>
     </div>
@@ -1150,12 +1152,32 @@ function inspectExport(el) {
   $('exFmt').onchange = (e) => { S.exportFmt = e.target.value; saveSettings(); renderInspector(); };
   $('exNorm').onchange = (e) => { S.normalize = e.target.checked; saveSettings(); };
   $('exRate').onchange = (e) => { S.exportRate = e.target.value; saveSettings(); };
+  if ($('exDither')) $('exDither').onchange = (e) => { S.dither = e.target.value; saveSettings(); };
   $('exNormDb').onchange = (e) => { S.normDb = clamp(+e.target.value || -1, -24, 0); saveSettings(); };
   $('exAll').onclick = () => exportAudio(0, editEnd());
   if (r) $('exSel').onclick = () => exportAudio(r[0], r[1], ' (selectie)');
 }
 
-function encodeWav(buf, bits) {
+/**
+ * Float → 16-bit met dither.
+ * 'auto': TPDF-dither (driehoeksverdeelde ruis van ±1 LSB) alleen op samples die niet precies in 16 bit passen
+ *         (fades, crossfades, gain, normaliseren). Onbewerkte stukken uit 16-bit-opnames blijven bit-exact.
+ * 'always': altijd TPDF. 'off': alleen afronden.
+ */
+function make16(mode) {
+  let seed = 0x9e3779b9;
+  const rnd = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; };
+  return (x) => {
+    const y = x < -1 ? -1 : x > 1 ? 1 : x;
+    let q = y < 0 ? y * 32768 : y * 32767;
+    // 0,005 LSB marge: de audio-engine rekent in 32-bit float, dus 'exacte' 16-bit-waarden liggen er soms net naast
+    if (mode === 'always' || (mode === 'auto' && Math.abs(q - Math.round(q)) > 0.005)) q += rnd() - rnd();
+    q = Math.round(q);
+    return q < -32768 ? -32768 : q > 32767 ? 32767 : q;
+  };
+}
+
+function encodeWav(buf, bits, dither = 'auto') {
   const nch = buf.numberOfChannels, sr = buf.sampleRate, n = buf.length, bps = bits / 8;
   const dataLen = n * nch * bps;
   const ab = new ArrayBuffer(44 + dataLen), v = new DataView(ab);
@@ -1166,13 +1188,14 @@ function encodeWav(buf, bits) {
   v.setUint16(32, nch * bps, true); v.setUint16(34, bits, true);
   str(36, 'data'); v.setUint32(40, dataLen, true);
   const chs = []; for (let c = 0; c < nch; c++) chs.push(buf.getChannelData(c));
+  const to16 = make16(dither);
   let o = 44;
   for (let i = 0; i < n; i++) {
     for (let c = 0; c < nch; c++) {
       const x = chs[c][i];
       if (bits === 32) { v.setFloat32(o, x, true); o += 4; continue; }
       const y = clamp(x, -1, 1);
-      if (bits === 16) { v.setInt16(o, Math.round(y < 0 ? y * 32768 : y * 32767), true); o += 2; }
+      if (bits === 16) { v.setInt16(o, to16(x), true); o += 2; }
       else {
         const s = Math.round(y < 0 ? y * 8388608 : y * 8388607);
         v.setUint8(o, s & 255); v.setUint8(o + 1, (s >> 8) & 255); v.setUint8(o + 2, (s >> 16) & 255); o += 3;
@@ -3497,7 +3520,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
+  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -3511,6 +3534,7 @@ function loadSettings() {
   if (typeof o.preroll === 'number') S.preroll = o.preroll;
   if (o.fmt) S.exportFmt = o.fmt;
   if (o.rate) S.exportRate = o.rate;
+  if (['auto', 'always', 'off'].includes(o.dither)) S.dither = o.dither;
   if (typeof o.norm === 'boolean') S.normalize = o.norm;
   if (typeof o.normDb === 'number') S.normDb = o.normDb;
 }
