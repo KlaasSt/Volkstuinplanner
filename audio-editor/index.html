@@ -165,6 +165,7 @@ kbd {
     <span class="sep"></span>
     <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
     <button id="compBtn" title="Geselecteerd stuk uit een take in de edit plaatsen (E)">Naar edit</button>
+    <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
     <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
     <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
     <button id="undoBtn" title="Ongedaan maken (Ctrl/⌘+Z)">↶</button>
@@ -236,6 +237,7 @@ const S = {
   sel: null, range: null,
   playing: null,
   undo: [], redo: [],
+  markers: [],
   zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
@@ -568,6 +570,7 @@ function resolveDrop(m, insert) {
     else out.push({ ...c, start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
   }
   S.clips = out;
+  if (insert) for (const mk of S.markers) if (mk.t >= s - 1e-9) mk.t += m.dur;
   normalize();
   const i = S.clips.indexOf(m), p = S.clips[i - 1], n = S.clips[i + 1];
   if (p && Math.abs(end(p) - m.start) < 1e-6) setXfLen(p, m, S.defXf);
@@ -603,6 +606,7 @@ function deleteRange(t0, t1, ripple = true) {
     }
     S.clips = out; normalize();
     if (ripple) {
+      S.markers = S.markers.filter((mk) => mk.t < t0 || mk.t >= t1).map((mk) => (mk.t >= t1 ? { ...mk, t: mk.t - d } : mk));
       for (let i = 1; i < S.clips.length; i++) {
         const a = S.clips[i - 1], b = S.clips[i];
         if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
@@ -622,6 +626,7 @@ function closeGapBefore(c) {
   const from = c.start;
   mutate(() => {
     for (const x of S.clips) if (x.start >= from - 1e-9) x.start -= delta;
+    for (const mk of S.markers) if (mk.t >= from - 1e-9) mk.t -= delta;
     normalize();
     const i = S.clips.indexOf(c), p = S.clips[i - 1];
     if (p && Math.abs(end(p) - c.start) < 1e-6) setXfLen(p, c, S.defXf);
@@ -653,6 +658,8 @@ function deleteSelection(leaveGap = false) {
     if (j) mutate(() => setXfLen(j.a, j.b, 0));
   } else if (s.kind === 'take') {
     const t = takeOf(s.id); if (t) removeTake(t);
+  } else if (s.kind === 'marker') {
+    mutate(() => { S.markers = S.markers.filter((m) => m.id !== s.id); S.sel = null; });
   } else if (s.kind === 'erange') {
     deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1), !leaveGap);
   } else if (s.kind === 'gap') {
@@ -661,12 +668,13 @@ function deleteSelection(leaveGap = false) {
 }
 
 /* ---------- undo ---------- */
-function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]) }); }
+function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers }); }
 function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift(); S.redo.length = 0; }
 function restore(str) {
   const o = JSON.parse(str);
   S.clips = o.clips.filter((c) => takeOf(c.takeId));
   o.sync.forEach(([id, s]) => { const t = takeOf(id); if (t) t.sync = s; });
+  S.markers = o.markers || [];
   afterEdit();
 }
 function undo() {
@@ -692,6 +700,7 @@ function validateSel() {
   else if (s.kind === 'take' && !takeOf(s.id)) S.sel = null;
   else if (s.kind === 'gap' && !gapAt(s.t)) S.sel = null;
   else if (s.kind === 'align' && (!alignSrc(s, 'a') || !alignSrc(s, 'b'))) S.sel = null;
+  else if (s.kind === 'marker' && !S.markers.some((m) => m.id === s.id)) S.sel = null;
 }
 
 function afterEdit() {
@@ -1186,6 +1195,27 @@ function drawBase() {
     g.fillText('Hier verschijnen je takes', 16, RULER + EDIT_H + TAKE_H / 2);
   }
 
+  // markers
+  const sorted = [...S.markers].sort((a, b) => a.t - b.t);
+  sorted.forEach((mk, i) => {
+    const x = Math.round(px(mk.t)) + 0.5;
+    if (x < -200 || x > W + 10) return;
+    const sel = S.sel && S.sel.kind === 'marker' && S.sel.id === mk.id;
+    const col = sel ? '#ffffff' : '#1dd1a1';
+    g.strokeStyle = sel ? 'rgba(255,255,255,0.7)' : 'rgba(29,209,161,0.55)'; g.lineWidth = 1;
+    g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x, RULER); g.lineTo(x, RULER + EDIT_H); g.stroke(); g.setLineDash([]);
+    const label = `${i + 1}${mk.text ? ' ' + mk.text : ''}`;
+    g.font = '10px system-ui, sans-serif';
+    const next = sorted[i + 1];
+    const room = next ? Math.max(14, px(next.t) - x - 4) : 220;
+    let txt = label;
+    while (txt.length > 1 && g.measureText(txt).width + 8 > room) txt = txt.slice(0, -2) + '…';
+    const w = g.measureText(txt).width + 8;
+    g.fillStyle = col; g.fillRect(x, 1, w, 13);
+    g.fillStyle = '#0f1115'; g.textBaseline = 'middle'; g.fillText(txt, x + 4, 8);
+    g.fillStyle = col; g.fillRect(x - 0.5, 1, 1.5, RULER - 1);
+  });
+
   // selectie in de edit (liniaal of Shift+slepen)
   if (S.sel && S.sel.kind === 'erange') {
     const a = px(Math.min(S.sel.t0, S.sel.t1)), b = px(Math.max(S.sel.t0, S.sel.t1));
@@ -1404,6 +1434,7 @@ function renderInspector() {
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
   if (s && s.kind === 'projects') { inspectProjects(el); return; }
+  if (s && s.kind === 'marker') { const mk = S.markers.find((m) => m.id === s.id); if (mk) return inspectMarker(el, mk); }
   if (s && s.kind === 'align') return inspectAlign(el, s);
   if (s && s.kind === 'erange') {
     const a = Math.min(s.t0, s.t1), b = Math.max(s.t0, s.t1);
@@ -1416,11 +1447,13 @@ function renderInspector() {
       <div class="row">
         <button id="erPlay">▶ Beluister selectie</button>
         <button id="erPreview">▶ Beluister zonder dit stuk</button>
+        <button id="erLoop" title="Speelt de selectie steeds opnieuw; bewerken tijdens het herhalen kan gewoon (L)">${S.playing && S.playing.loop ? '■ Stop herhalen' : '🔁 Herhaal selectie'} <kbd>L</kbd></button>
         <span class="hint"><b>Aanschuiven</b>: de edit wordt korter en de naad krijgt een crossfade van ${ms(S.defXf)} ms. <b>Gat laten</b>: er komt stilte voor in de plaats, met korte fades aan de randen. Ongedaan maken met ⌘Z.</span>
       </div>`;
     $('erDel').onclick = () => deleteRange(a, b, true);
     $('erGap').onclick = () => deleteRange(a, b, false);
     $('erPlay').onclick = () => play(a, b);
+    $('erLoop').onclick = toggleLoop;
     $('erPreview').onclick = () => {
       // speel 2 s voor de selectie, en ga dan verder vanaf het eind (zoals het na weghalen zou klinken, zonder crossfade)
       play(Math.max(0, a - S.preroll), a);
@@ -1469,6 +1502,8 @@ function renderInspector() {
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
       <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
+      <span><kbd>M</kbd> marker zetten · <kbd>,</kbd> <kbd>.</kbd> vorige/volgende marker</span>
+      <span><kbd>L</kbd> geselecteerd stuk of crossfade herhalen</span>
       <span><b>Uitlijnen</b> (werkbalk): twee takes tot op de sample t.o.v. elkaar verschuiven</span>
       <span>Klik op stilte in de edit + <kbd>Delete</kbd>: gat dichten, alles erna schuift op</span>
       <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
@@ -1635,6 +1670,67 @@ function compRange() {
   const t = takeOf(r.takeId); if (!t) return;
   replaceRange(t, Math.min(r.t0, r.t1), Math.max(r.t0, r.t1));
   S.range = null; S.dirty = true; updateButtons();
+}
+
+/* ---------- markers + herhalen ---------- */
+const sortedMarkers = () => [...S.markers].sort((a, b) => a.t - b.t);
+function ensureVisible(t) {
+  if (px(t) < 0 || px(t) > cssW - 20) { S.view = Math.max(0, t - (cssW / S.pps) * 0.2); updateScroll(); }
+  S.dirty = true;
+}
+/** Marker op de afspeelkop. Tijdens het afspelen loopt het afspelen gewoon door. */
+function addMarker(t = S.playhead) {
+  if (S.markers.some((m) => Math.abs(m.t - t) < 0.05)) { toast('Hier staat al een marker'); return; }
+  pushUndo();
+  const mk = { id: newId(), t: Math.max(0, t), text: '' };
+  S.markers.push(mk);
+  const nr = sortedMarkers().indexOf(mk) + 1;
+  S.dirty = true; updateButtons(); scheduleSave();
+  if (S.playing) toast(`Marker ${nr} op ${fmt(mk.t, 1)} — geef hem later een notitie`);
+  else select({ kind: 'marker', id: mk.id });
+}
+function jumpMarker(dir) {
+  const list = sortedMarkers();
+  if (!list.length) { toast('Nog geen markers. Druk M om er een te zetten.'); return; }
+  const tol = S.playing ? 0.4 : 0.01;
+  const mk = dir > 0 ? list.find((m) => m.t > S.playhead + 0.01) : [...list].reverse().find((m) => m.t < S.playhead - tol);
+  if (!mk) { toast(dir > 0 ? 'Geen marker meer verderop' : 'Geen marker meer hiervoor'); return; }
+  S.playhead = mk.t; ensureVisible(mk.t);
+  if (S.playing) restartAtPlayhead(); else select({ kind: 'marker', id: mk.id });
+}
+function toggleLoop() {
+  if (S.playing && S.playing.loop) { stop(); renderInspector(); return; }
+  const s = S.sel;
+  let a, b;
+  if (s && s.kind === 'erange') { a = Math.min(s.t0, s.t1); b = Math.max(s.t0, s.t1); }
+  else if (s && s.kind === 'junction') { const j = junctionOf(s.a, s.b); if (j) { a = Math.max(0, j.s - S.preroll); b = j.e + S.preroll; } }
+  if (a == null) { toast('Sleep eerst in de tijdbalk over een stuk (of klik een crossfade aan) om dat te herhalen'); return; }
+  play(a, b, [a, b]);
+  renderInspector();
+}
+function inspectMarker(el, mk) {
+  const list = sortedMarkers(), nr = list.indexOf(mk) + 1;
+  el.innerHTML = `
+    <div class="insp-head"><h2>Marker ${nr}</h2><span>${fmt(mk.t)}</span></div>
+    <div class="row">
+      <label>Notitie <input type="text" id="mkText" value="${esc(mk.text)}" placeholder="bijv. take 2 beter vanaf hier" style="width:320px"></label>
+      <button id="mkPlay">▶ Speel vanaf hier</button>
+      <button id="mkDel" class="danger">Verwijder <kbd>Delete</kbd></button>
+    </div>
+    <div class="plist">${list.map((m, i) => `
+      <div class="pitem${m.id === mk.id ? ' cur' : ''}">
+        <span class="pname">${i + 1}. ${fmt(m.t, 1)}</span>
+        <span class="pmeta">${m.text ? esc(m.text) : '—'}</span>
+        <button data-mk="${m.id}">Ga naar</button>
+      </div>`).join('')}</div>
+    <p class="hint"><kbd>M</kbd> zet een marker op de afspeelkop, ook tijdens het afspelen · <kbd>,</kbd> en <kbd>.</kbd> springen naar de vorige/volgende marker · sleep een marker in de tijdbalk om hem te verplaatsen.</p>`;
+  $('mkText').onchange = (e) => { pushUndo(); mk.text = e.target.value.trim(); S.dirty = true; scheduleSave(); renderInspector(); };
+  $('mkText').onkeydown = (e) => { if (e.key === 'Enter') e.target.blur(); };
+  $('mkPlay').onclick = () => { S.playhead = mk.t; play(mk.t); };
+  $('mkDel').onclick = () => deleteSelection();
+  el.querySelectorAll('[data-mk]').forEach((b) => {
+    b.onclick = () => { const m = S.markers.find((x) => x.id === +b.dataset.mk); S.playhead = m.t; ensureVisible(m.t); select({ kind: 'marker', id: m.id }); if (S.playing) restartAtPlayhead(); };
+  });
 }
 
 /* ---------- uitlijnvenster ----------
@@ -2009,7 +2105,9 @@ cv.addEventListener('pointerdown', (e) => {
   cv.setPointerCapture(e.pointerId);
   const t = tAt(x), lane = laneAt(y);
   const d = { x0: x, moved: false, t0: t };
-  if (lane.kind === 'ruler' || (lane.kind === 'edit' && e.shiftKey)) { d.type = 'erange'; }  // slepen = selectie in de edit
+  const mHit = lane.kind === 'ruler' ? S.markers.find((m) => Math.abs(px(m.t) - x) < 7) : null;
+  if (mHit) { d.type = 'marker'; d.m = mHit; d.ot = mHit.t; select({ kind: 'marker', id: mHit.id }); }
+  else if (lane.kind === 'ruler' || (lane.kind === 'edit' && e.shiftKey)) { d.type = 'erange'; }  // slepen = selectie in de edit
   else if (lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
@@ -2039,12 +2137,15 @@ cv.addEventListener('pointermove', (e) => {
   if (!d.moved && Math.abs(dx) < 3) return;
   if (!d.moved) {
     d.moved = true;
-    if (['move', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync'].includes(d.type)) pushUndo();
+    if (['move', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type)) pushUndo();
   }
   const dt = dx / S.pps, sh = e.shiftKey;
   const c = d.c, o = d.o;
   switch (d.type) {
     case 'playhead': S.playhead = Math.max(0, tAt(x)); break;
+    case 'marker':
+      d.m.t = Math.max(0, snapT(d.ot + dt, null, sh));
+      break;
     case 'erange': {
       const t0 = Math.max(0, snapT(d.t0, null, false)), t1 = Math.max(0, snapT(tAt(x), null, false));
       if (!S.sel || S.sel.kind !== 'erange') { S.sel = { kind: 'erange', t0, t1 }; S.range = null; }
@@ -2118,6 +2219,12 @@ function endDrag(e) {
     S.dirty = true;
     return;
   }
+  if (d.type === 'marker') {
+    if (d.moved) afterEdit();
+    else { S.playhead = d.m.t; if (S.playing) restartAtPlayhead(); renderInspector(); }
+    S.dirty = true;
+    return;
+  }
   if (d.type === 'erange') {
     const s = S.sel;
     if (!d.moved || !s || s.kind !== 'erange' || Math.abs(s.t1 - s.t0) < 0.01) {
@@ -2162,7 +2269,8 @@ function restartAtPlayhead() {
 function hoverCursor(x, y, alt) {
   const lane = laneAt(y);
   let cur = 'default';
-  if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
+  if (lane.kind === 'ruler' && S.markers.some((m) => Math.abs(px(m.t) - x) < 7)) cur = 'ew-resize';
+  else if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
@@ -2226,6 +2334,7 @@ $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
 $('compBtn').onclick = compRange;
 $('alignBtn').onclick = openAlign;
+$('markBtn').onclick = () => addMarker();
 $('deleteBtn').onclick = () => deleteSelection();
 $('undoBtn').onclick = undo;
 $('redoBtn').onclick = redo;
@@ -2264,6 +2373,10 @@ document.addEventListener('keydown', (e) => {
     case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
     case '-': case '_': zoomAt(cssW / 2, 1 / 1.5); break;
     case 'f': case 'F': zoomFit(); break;
+    case 'm': case 'M': addMarker(); break;
+    case ',': case '<': jumpMarker(-1); break;
+    case '.': case '>': jumpMarker(1); break;
+    case 'l': case 'L': toggleLoop(); break;
     case 'Home': S.playhead = 0; S.view = 0; S.dirty = true; updateScroll(); if (S.playing) restartAtPlayhead(); break;
     case 'End': S.playhead = editEnd(); break;
     case 'Escape': S.range = null; select(null); break;
@@ -2412,7 +2525,7 @@ async function saveProject() {
       await dbPut('projects', {
         id: p.id, name: p.name, created: p.created, updated: Date.now(),
         takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration })),
-        clips: S.clips.map((c) => ({ ...c })), nextId: S.nextId,
+        clips: S.clips.map((c) => ({ ...c })), markers: S.markers, nextId: S.nextId,
         view: { pps: S.pps, view: S.view, playhead: S.playhead }, length: editEnd(),
       });
       store.set('last', p.id);
@@ -2438,7 +2551,7 @@ async function cleanupFiles() {
 
 function resetWorkspace() {
   stop();
-  S.takes = []; S.clips = []; S.undo = []; S.redo = [];
+  S.takes = []; S.clips = []; S.markers = []; S.undo = []; S.redo = [];
   S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0;
   updateProjectLine(); setSaveState('wordt automatisch bewaard');
   buildHeads(); S.loading = true; afterEdit(); S.loading = false;
@@ -2471,6 +2584,7 @@ async function loadProject(id) {
     }
     S.takes = takes;
     S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
+    S.markers = rec.markers || [];
     S.nextId = Math.max(rec.nextId || 1, ...takes.map((t) => t.id + 1), ...S.clips.map((c) => c.id + 1));
     S.project = { id: rec.id, name: rec.name, created: rec.created };
     S.undo = []; S.redo = []; S.sel = null; S.range = null;
