@@ -60,6 +60,8 @@ header.bar {
   padding-right: max(16px, env(safe-area-inset-right));
 }
 #installBtn[hidden] { display: none; }
+button.tool { min-width: 34px; padding: 4px 8px; }
+button.tool.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .brand { display: flex; flex-direction: column; margin-right: 8px; }
 .brand strong { font-size: 15px; }
 .brand span { color: var(--muted); font-size: 11px; }
@@ -154,6 +156,8 @@ kbd {
 <header class="bar">
   <div class="brand"><strong>Take Crossfader</strong><span><button id="projName" class="linkish" title="Projecten openen, hernoemen of een nieuw project beginnen">Nog geen project</button> · <span id="saveState">wordt automatisch bewaard</span></span></div>
   <div class="tools">
+    <span class="group" role="group" aria-label="Gereedschap" title="Gereedschap voor de EDIT- en take-banen">
+      <button class="tool" data-tool="move" title="Verplaatsen (1): slepen boven een clip verplaatst die clip">✥</button><button class="tool" data-tool="select" title="Selecteren (2): klikken selecteert, slepen selecteert een stuk; clips verschuiven niet">↖</button><button class="tool" data-tool="hand" title="Hand (3): slepen verschuift het beeld; clips verschuiven niet">✋</button></span>
     <button id="projBtn" title="Bewaarde projecten openen, een nieuw project beginnen">Projecten</button>
     <button id="importBtn" class="primary">Importeer takes</button>
     <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus,.crossfader" hidden>
@@ -241,6 +245,7 @@ const S = {
   sel: null, range: null,
   playing: null,
   undo: [], redo: [],
+  tool: 'move',
   markers: [], exportFmt: 'wav24', normalize: false, normDb: -1,
   zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: false, returnToStart: true,
   project: null, loading: false,
@@ -1633,6 +1638,7 @@ function renderInspector() {
       <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
+      <span><kbd>1</kbd> ✥ verplaatsen · <kbd>2</kbd> ↖ selecteren · <kbd>3</kbd> ✋ hand</span>
       <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
       <span><kbd>M</kbd> marker zetten · <kbd>,</kbd> <kbd>.</kbd> vorige/volgende marker</span>
       <span><kbd>L</kbd> geselecteerd stuk of crossfade herhalen</span>
@@ -2571,7 +2577,14 @@ cv.addEventListener('pointerdown', (e) => {
   const d = { x0: x, moved: false, t0: t };
   const mHit = lane.kind === 'ruler' ? S.markers.find((m) => Math.abs(px(m.t) - x) < 7) : null;
   if (mHit) { d.type = 'marker'; d.m = mHit; d.ot = mHit.t; select({ kind: 'marker', id: mHit.id }); }
-  else if (lane.kind === 'ruler' || (lane.kind === 'edit' && e.shiftKey)) { d.type = 'erange'; }  // slepen = selectie in de edit
+  else if (lane.kind === 'ruler' || (lane.kind === 'edit' && (e.shiftKey || S.tool === 'select'))) {   // slepen = selectie in de edit
+    d.type = 'erange';
+    if (lane.kind === 'edit') d.hit = hitEdit(x);
+  }
+  else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) {   // hand: slepen schuift altijd het beeld
+    d.type = 'pan'; d.view0 = S.view;
+    if (lane.kind === 'edit') d.hit = hitEdit(x); else d.take = lane.take;
+  }
   else if (lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
@@ -2677,8 +2690,9 @@ function endDrag(e) {
   S.drag = null;
   if (d.type === 'pan') {
     if (!d.moved) {
-      S.playhead = Math.max(0, d.t0);
-      if (gapAt(d.t0)) select({ kind: 'gap', t: d.t0 });
+      if (!(d.hit && d.hit.type === 'junction')) S.playhead = Math.max(0, d.t0);
+      if ('hit' in d || d.take) clickSelect(d);
+      else if (gapAt(d.t0)) select({ kind: 'gap', t: d.t0 });
       if (S.playing) restartAtPlayhead();
     }
     S.dirty = true;
@@ -2694,7 +2708,11 @@ function endDrag(e) {
     const s = S.sel;
     if (!d.moved || !s || s.kind !== 'erange' || Math.abs(s.t1 - s.t0) < 0.01) {
       if (s && s.kind === 'erange') S.sel = null;
-      if (!d.moved) { S.playhead = Math.max(0, d.t0); if (S.playing) restartAtPlayhead(); }
+      if (!d.moved) {
+        if (!(d.hit && d.hit.type === 'junction')) S.playhead = Math.max(0, d.t0);
+        if ('hit' in d) clickSelect(d);
+        if (S.playing) restartAtPlayhead();
+      }
     }
     S.dirty = true; buildHeads(); renderInspector(); updateButtons();
     return;
@@ -2731,11 +2749,29 @@ function restartAtPlayhead() {
   else play(S.playhead);
 }
 
+/** Klik zonder slepen met het selecteer- of handgereedschap: alleen selecteren. */
+function clickSelect(d) {
+  const h = d.hit;
+  if (d.take) select({ kind: 'take', id: d.take.id });
+  else if (h && h.type === 'junction') select({ kind: 'junction', a: h.j.a.id, b: h.j.b.id });
+  else if (h && h.c) select({ kind: 'clip', id: h.c.id });
+  else if (gapAt(d.t0)) select({ kind: 'gap', t: d.t0 });
+  else select(null);
+}
+
+function setTool(t, quiet) {
+  S.tool = t;
+  document.querySelectorAll('button.tool').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
+  if (!quiet) { saveSettings(); toast({ move: '✥ Verplaatsen: slepen verplaatst clips', select: '↖ Selecteren: slepen selecteert een stuk, clips blijven staan', hand: '✋ Hand: slepen verschuift het beeld, clips blijven staan' }[t]); }
+}
+
 function hoverCursor(x, y, alt) {
   const lane = laneAt(y);
   let cur = 'default';
   if (lane.kind === 'ruler' && S.markers.some((m) => Math.abs(px(m.t) - x) < 7)) cur = 'ew-resize';
   else if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
+  else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
+  else if (S.tool === 'select' && lane.kind === 'edit') cur = 'default';
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
@@ -2798,6 +2834,7 @@ $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
 $('compBtn').onclick = (e) => editAction(e.altKey);
+document.querySelectorAll('button.tool').forEach((b) => { b.onclick = () => setTool(b.dataset.tool); });
 $('manualBtn').onclick = () => window.open('handleiding.pdf', '_blank');
 $('destBtn').onclick = (e) => setDestPoint(S.playhead, e.shiftKey);
 $('destOutBtn').onclick = () => setDestPoint(S.playhead, true);
@@ -2850,6 +2887,9 @@ document.addEventListener('keydown', (e) => {
     case '-': case '_': zoomAt(cssW / 2, 1 / 1.5); break;
     case 'f': case 'F': zoomFit(); break;
     case 'm': case 'M': addMarker(); break;
+    case '1': setTool('move'); break;
+    case '2': setTool('select'); break;
+    case '3': setTool('hand'); break;
     case ',': case '<': jumpMarker(-1); break;
     case '.': case '>': jumpMarker(1); break;
     case 'l': case 'L': toggleLoop(); break;
@@ -3189,12 +3229,13 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
+  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
   if (!o) return;
   if (typeof o.snap === 'boolean') S.snap = o.snap;
+  if (['move', 'select', 'hand'].includes(o.tool)) S.tool = o.tool;
   if (typeof o.zc === 'boolean') S.zeroCross = o.zc;
   if (typeof o.defXf === 'number') S.defXf = o.defXf;
   if (typeof o.rts === 'boolean') S.returnToStart = o.rts;
@@ -3205,6 +3246,7 @@ function loadSettings() {
   if (typeof o.normDb === 'number') S.normDb = o.normDb;
 }
 function applySettingsUI() {
+  setTool(S.tool, true);
   $('snapChk').checked = S.snap; $('zcChk').checked = S.zeroCross; $('defXf').value = ms(S.defXf); $('rtsChk').checked = S.returnToStart;
 }
 
