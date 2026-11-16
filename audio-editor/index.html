@@ -534,6 +534,33 @@ function resolveDrop(m, insert) {
   if (n && Math.abs(end(m) - n.start) < 1e-6) setXfLen(m, n, S.defXf);
 }
 
+/** Het lege stuk in de edit rond tijd t: { a, b, next } of null. */
+function gapAt(t) {
+  if (S.clips.some((c) => c.start <= t && end(c) > t)) return null;
+  const next = S.clips.find((c) => c.start > t);
+  if (!next) return null;
+  const a = S.clips.filter((c) => c.start < next.start).reduce((m, c) => Math.max(m, end(c)), 0);
+  return { a, b: next.start, next };
+}
+
+/** Schuif clip c en alles erna naar links, tot tegen de vorige clip (of 0:00). */
+function closeGapBefore(c) {
+  const prevEnd = S.clips.filter((x) => x !== c && x.start < c.start).reduce((m, x) => Math.max(m, end(x)), 0);
+  const delta = c.start - prevEnd;
+  if (delta < 0.001) { toast('Er zit geen gat vóór deze clip'); return; }
+  const from = c.start;
+  mutate(() => {
+    for (const x of S.clips) if (x.start >= from - 1e-9) x.start -= delta;
+    normalize();
+    const i = S.clips.indexOf(c), p = S.clips[i - 1];
+    if (p && Math.abs(end(p) - c.start) < 1e-6) setXfLen(p, c, S.defXf);
+    S.sel = { kind: 'clip', id: c.id };
+    if (S.playhead >= from) S.playhead = Math.max(0, S.playhead - delta);
+  });
+  if (px(c.start) < 0 || px(c.start) > cssW) { S.view = Math.max(0, c.start - 1); S.dirty = true; updateScroll(); }
+  toast(prevEnd > 0 ? `Gat van ${fmt(delta, 1)} gedicht` : `Gat van ${fmt(delta, 1)} gedicht: de edit begint nu op 0:00`);
+}
+
 function swapTake(c, take) {
   const old = takeOf(c.takeId);
   mutate(() => {
@@ -555,6 +582,8 @@ function deleteSelection() {
     if (j) mutate(() => setXfLen(j.a, j.b, 0));
   } else if (s.kind === 'take') {
     const t = takeOf(s.id); if (t) removeTake(t);
+  } else if (s.kind === 'gap') {
+    const g = gapAt(s.t); if (g) closeGapBefore(g.next);
   }
 }
 
@@ -588,6 +617,7 @@ function validateSel() {
   if (s.kind === 'clip' && !clipOf(s.id)) S.sel = null;
   else if (s.kind === 'junction' && !junctionOf(s.a, s.b)) S.sel = null;
   else if (s.kind === 'take' && !takeOf(s.id)) S.sel = null;
+  else if (s.kind === 'gap' && !gapAt(s.t)) S.sel = null;
 }
 
 function afterEdit() {
@@ -1048,6 +1078,20 @@ function drawBase() {
     g.fillText('Hier verschijnen je takes', 16, RULER + EDIT_H + TAKE_H / 2);
   }
 
+  // geselecteerd leeg stuk
+  if (S.sel && S.sel.kind === 'gap') {
+    const gp = gapAt(S.sel.t);
+    if (gp) {
+      const a = px(gp.a), b = px(gp.b);
+      g.fillStyle = 'rgba(255,92,108,0.10)'; g.fillRect(a, y, b - a, h);
+      g.setLineDash([5, 4]); g.strokeStyle = 'rgba(255,92,108,0.8)'; g.lineWidth = 1;
+      g.strokeRect(a + 0.5, y + 0.5, Math.max(1, b - a - 1), h - 1); g.setLineDash([]);
+      g.fillStyle = '#ff9aa5'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'center';
+      g.fillText(`stilte ${fmt(gp.b - gp.a, 1)} — Delete of "Gat dichten" schuift alles erna op`, clamp((Math.max(a, 0) + Math.min(b, cssW)) / 2, 160, cssW - 160), y + h / 2);
+      g.textAlign = 'left';
+    }
+  }
+
   // ghost van de selectie in de edit
   if (S.range) {
     const a = px(Math.min(S.range.t0, S.range.t1)), b = px(Math.max(S.range.t0, S.range.t1));
@@ -1240,6 +1284,20 @@ function renderInspector() {
   }
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
+  if (s && s.kind === 'gap') {
+    const g = gapAt(s.t);
+    if (g) {
+      const after = S.clips.filter((c) => c.start >= g.b - 1e-9).length;
+      el.innerHTML = `
+        <div class="insp-head"><h2>Leeg stuk</h2><span>${fmt(g.a)} – ${fmt(g.b)} · ${fmt(g.b - g.a, 1)} stilte</span></div>
+        <div class="row">
+          <button id="gapClose" class="primary">Gat dichten <kbd>Delete</kbd></button>
+          <span class="hint">Schuift ${after === 1 ? 'de clip' : `alle ${after} clips`} vanaf ${fmt(g.b, 1)} naar links, tot ${g.a > 0 ? `tegen de vorige clip (met een crossfade van ${ms(S.defXf)} ms)` : 'het begin (0:00)'}.</span>
+        </div>`;
+      $('gapClose').onclick = () => closeGapBefore(g.next);
+      return;
+    }
+  }
   el.innerHTML = `<div class="help">
     <h2>Zo werkt het</h2>
     <ol>
@@ -1263,6 +1321,7 @@ function renderInspector() {
       <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
+      <span>Klik op stilte in de edit + <kbd>Delete</kbd>: gat dichten, alles erna schuift op</span>
       <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
       <span>Crossfade slepen: knip verschuiven</span>
       <span>Alt + crossfade slepen: lengte</span>
@@ -1359,6 +1418,7 @@ function inspectClip(el, c) {
     </div>
     <div class="row">
       <button id="clSplit">Knip op afspeelkop <kbd>S</kbd></button>
+      <button id="clGap" title="Schuift deze clip en alles erna naar links, tot tegen de vorige clip of 0:00">Gat ervoor dichten</button>
       <button id="clPlay">▶ Speel vanaf clip</button>
       <button id="clDel" class="danger">Verwijder clip</button>
       <span class="hint">Wissel van take om dit stuk door dezelfde plek uit een andere take te vervangen (met crossfades). Alt+slepen verschuift de inhoud binnen de clip.</span>
@@ -1374,6 +1434,7 @@ function inspectClip(el, c) {
   $('clFi').onchange = (e) => mutate(() => { c.fadeIn = Math.max(0, +e.target.value || 0) / 1000; });
   $('clFo').onchange = (e) => mutate(() => { c.fadeOut = Math.max(0, +e.target.value || 0) / 1000; });
   $('clSplit').onclick = () => splitAt(S.playhead);
+  $('clGap').onclick = () => closeGapBefore(c);
   $('clPlay').onclick = () => play(c.start);
   $('clDel').onclick = deleteSelection;
 }
@@ -1554,7 +1615,11 @@ function endDrag(e) {
   if (!d || d.xf) return;
   S.drag = null;
   if (d.type === 'pan') {
-    if (!d.moved) { S.playhead = Math.max(0, d.t0); if (S.playing) restartAtPlayhead(); }
+    if (!d.moved) {
+      S.playhead = Math.max(0, d.t0);
+      if (gapAt(d.t0)) select({ kind: 'gap', t: d.t0 });
+      if (S.playing) restartAtPlayhead();
+    }
     S.dirty = true;
     return;
   }
