@@ -177,8 +177,9 @@
 <ol>
   <li>Klik in de take-baan op de noot (of speel de take met <span class="btn">▶ solo</span> af).</li>
   <li>Druk <kbd>B</kbd> op het begin (<b>Bron in</b>) en eventueel <kbd>⇧</kbd><kbd>B</kbd> op het eind (<b>Bron uit</b>).</li>
-  <li>Zet het doel met <kbd>D</kbd> (en <kbd>⇧</kbd><kbd>D</kbd>) en druk <kbd>E</kbd>.</li>
+  <li>Zet het doel met <kbd>D</kbd> (en <kbd>⇧</kbd><kbd>D</kbd>), of sleep in de tijdbalk over het stuk dat vervangen moet worden, en druk <kbd>E</kbd>.</li>
 </ol>
+<p><b>Een herhaling gebruiken:</b> klinkt een passage beter waar hij later in het stuk terugkomt? Wijs dat latere stuk in de take aan met <kbd>B</kbd> en <kbd>⇧</kbd><kbd>B</kbd>, sleep in de tijdbalk over het eerdere stuk en druk <kbd>E</kbd>. Het latere stuk blijft gewoon staan; je maakt een kopie. Gebruik hier geen <kbd>H</kbd>, want die zoekt dezelfde plek en niet de herhaling. Met een zelf aangewezen bronpunt blijft de take-baan liggen waar hij lag.</p>
 </div>
 
 <div class="scen">
@@ -247,6 +248,7 @@
       <li><b>MP3</b>: om te delen.</li>
     </ul>
   </li>
+  <li>Kies de <b>samplefrequentie</b>. Standaard is dat <i>zoals het project</i>: het project werkt in de frequentie van je eerste opname (WAV, AIFF of FLAC), dus 44,1 kHz-opnames blijven 44,1 kHz zonder omrekenen. Je kunt ook 44,1, 48 of 96 kHz kiezen (MP3: hooguit 48 kHz).</li>
   <li>Zet eventueel <b>Normaliseren naar −1 dBFS</b> aan.</li>
   <li>Kies <span class="btn">Hele edit exporteren</span>, of, als je eerst in de tijdbalk een stuk had geselecteerd, <span class="btn">Alleen selectie</span>.</li>
 </ol>
@@ -360,6 +362,7 @@
   <thead><tr><th>Probleem</th><th>Oplossing</th></tr></thead>
   <tr><td class="k">Iets ging mis</td><td><kbd>⌘</kbd><kbd>Z</kbd>, zo vaak als nodig, of <span class="btn">↶</span> in de werkbalk. Je bronopnames worden nooit aangepast.</td></tr>
   <tr><td class="k">Clip per ongeluk verschoven</td><td><kbd>⌘</kbd><kbd>Z</kbd>. Kies daarna het gereedschap ↖ Selecteren (<kbd>2</kbd>) of ✋ Hand (<kbd>3</kbd>): dan blijven clips staan.</td></tr>
+  <tr><td class="k">Opnieuw (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>Z</kbd>) doet niets</td><td>Na ongedaan maken wist elke <i>nieuwe</i> bewerking de lijst om opnieuw te doen, zoals in elk programma. Klikken, selecteren en een clip terugslepen naar dezelfde plek tellen niet als bewerking. Werkt de toets niet, probeer dan <kbd>⌘</kbd><kbd>Y</kbd> of de knop <span class="btn">↷</span>.</td></tr>
   <tr><td class="k">Een sneltoets doet niets</td><td>De cursor staat waarschijnlijk in een invulveld. Klik in de tijdlijn en probeer opnieuw.</td></tr>
   <tr><td class="k"><kbd>H</kbd> of <kbd>E</kbd> kiest de verkeerde plek</td><td>Komt voor bij herhalingen of heel zachte inzetten. Wijs de plek zelf aan met <kbd>B</kbd> (en <kbd>⇧</kbd><kbd>B</kbd>), of corrigeer in het uitlijnvenster.</td></tr>
   <tr><td class="k">Tikje bij een wissel</td><td>Laat <i>Nuldoorgang</i> aan, maak de crossfade iets langer, of gebruik <span class="btn">Fase uitlijnen</span>.</td></tr>
@@ -368,6 +371,7 @@
   <tr><td class="k">Clipping bij export</td><td>Zet <i>Normaliseren</i> aan, of verlaag de gain van de luidste clip.</td></tr>
   <tr><td class="k">Project weg na openen</td><td>Kijk bij <span class="btn">Projecten</span>. Gebruik voor belangrijk werk regelmatig <i>Project als bestand bewaren</i>. Werk bij voorkeur in Chrome of in de geïnstalleerde app.</td></tr>
   <tr><td class="k">Opslag vol</td><td>Verwijder oude projecten bij <span class="btn">Projecten</span>; de bijbehorende audio wordt dan opgeruimd.</td></tr>
+  <tr><td class="k">Welke samplefrequentie?</td><td>Het project neemt de frequentie van de eerste geïmporteerde opname over. In het take-paneel zie je die van elk bestand; een take met een andere frequentie wordt omgerekend (je krijgt dan een melding). Bij het exporteren kies je de frequentie zelf.</td></tr>
   <tr><td class="k">Nieuwe versie</td><td>Sluit de app helemaal (<kbd>⌘</kbd><kbd>Q</kbd>) en open hem opnieuw, eventueel twee keer.</td></tr>
 </table>
 <div class="box"><b class="t">Samenwerking met Audacity</b>Monteer in Take Crossfader (takes kiezen, uitlijnen, crossfades) en exporteer als WAV 24-bit of 32-bit float. Werk daarna af in Audacity: EQ, ruisonderdrukking, compressie en het eindniveau.</div>
