@@ -2,9 +2,16 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14171c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Crossfader">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Take Crossfader</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
 :root {
   --bg: #0f1115;
@@ -48,7 +55,11 @@ label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted)
 header.bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
   padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
 }
+#installBtn[hidden] { display: none; }
 .brand { display: flex; flex-direction: column; margin-right: 8px; }
 .brand strong { font-size: 15px; }
 .brand span { color: var(--muted); font-size: 11px; }
@@ -160,6 +171,7 @@ kbd {
       <option value="32">WAV 32-bit float</option>
     </select>
     <button id="exportBtn">Exporteer</button>
+    <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
   </div>
 </header>
 
@@ -1650,6 +1662,26 @@ function makeDemo() {
     toast('Demo geladen: take 1 staat in de edit. Selecteer in take 2 het stuk rond 0:05 en druk E.');
   }, 30);
 }
+
+/* ---------- app: offline + installeren ---------- */
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  // Eigen service worker met scope ./ (alleen de editor), los van die van de Tuinplanner.
+  navigator.serviceWorker.register('sw.js', { scope: './' }).catch((err) => console.warn('Service worker niet geregistreerd:', err));
+}
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $('installBtn').hidden = false;
+});
+$('installBtn').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  $('installBtn').hidden = true;
+};
+window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; toast('Take Crossfader is geïnstalleerd'); });
 
 /* ---------- start ---------- */
 new ResizeObserver(() => resize()).observe($('canvasWrap'));

@@ -14,3 +14,5 @@ In `audio-editor/` staat een losse, statische audio-editor om één edit samen t
 - Sleep in een take-baan om een stuk te selecteren en druk **E**: dat stuk vervangt de edit op dezelfde plek, met crossfades aan beide kanten.
 - Klik op een crossfade voor vorm (equal power, lineair, S-curve), lengte, knippunt verschuiven, fase uitlijnen en beluisteren.
 - Exporteer de edit als WAV (16/24-bit of 32-bit float).
+
+De editor is een eigen installeerbare app (manifest, iconen en service worker in `audio-editor/`, los van de Tuinplanner) en werkt na het eerste bezoek ook offline. Installeren: in Chrome/Edge via de knop **Installeer app** of het installatie-icoon in de adresbalk; op iPhone/iPad via Safari → Deel → **Zet op beginscherm**. Pas `VERSION` in `audio-editor/sw.js` aan als je de app-bestanden wijzigt.
