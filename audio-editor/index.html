@@ -165,7 +165,12 @@ kbd {
     <label title="Na stoppen springt de afspeelkop terug naar waar je begon met afspelen"><input type="checkbox" id="rtsChk" checked> ↩ Terug naar start</label>
     <span class="sep"></span>
     <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
-    <button id="compBtn" title="Geselecteerd stuk uit een take in de edit plaatsen (E)">Naar edit</button>
+    <span class="sep"></span>
+    <button id="destBtn" title="Doelpunt in de edit op de afspeelkop, ook tijdens het afspelen (D)">◆ Doelpunt</button>
+    <button id="alignHereBtn" title="Alle takes zo verschuiven dat dezelfde passage onder de afspeelkop ligt (H). De edit blijft staan.">Takes hier uitlijnen</button>
+    <button id="srcBtn" title="Bronpunt in de geselecteerde (of solo spelende) take op de afspeelkop (B)">◇ Bronpunt</button>
+    <button id="compBtn" title="Overnemen: vanaf het doelpunt verder met de take (E). Of: geselecteerd stuk uit een take in de edit plaatsen.">Overnemen</button>
+    <span class="sep"></span>
     <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
     <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
     <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
@@ -234,7 +239,7 @@ const S = {
   playing: null,
   undo: [], redo: [],
   markers: [], exportFmt: 'wav24', normalize: false, normDb: -1,
-  zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true, returnToStart: true,
+  zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: false, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
   meter: 0,
@@ -1318,6 +1323,22 @@ function drawBase() {
     }
   }
 
+  // doel- en bronpunt
+  if (S.pts.dest != null) {
+    const x = Math.round(px(S.pts.dest)) + 0.5;
+    g.fillStyle = '#ffd32a'; g.fillRect(x - 1, RULER, 2, EDIT_H);
+    g.beginPath(); g.moveTo(x - 7, RULER + EDIT_H - 1); g.lineTo(x + 7, RULER + EDIT_H - 1); g.lineTo(x, RULER + EDIT_H - 10); g.closePath(); g.fill();
+    g.fillStyle = '#0f1115'; g.fillRect(x + 3, RULER + 2, 14, 13); g.fillStyle = '#ffd32a'; g.font = 'bold 10px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('D', x + 6, RULER + 9);
+  }
+  if (S.pts.src) {
+    const k = S.takes.findIndex((t) => t.id === S.pts.src.takeId);
+    if (k >= 0) {
+      const tk = S.takes[k], y0 = RULER + EDIT_H + k * TAKE_H, x = Math.round(px(tk.sync + S.pts.src.s)) + 0.5;
+      g.fillStyle = '#ffd32a'; g.fillRect(x - 1, y0 + 2, 2, TAKE_H - 4);
+      g.fillStyle = '#0f1115'; g.fillRect(x + 3, y0 + 4, 14, 13); g.fillStyle = '#ffd32a'; g.font = 'bold 10px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText('B', x + 6, y0 + 11);
+    }
+  }
+
   // ghost van de selectie in de edit
   if (S.range) {
     const a = px(Math.min(S.range.t0, S.range.t1)), b = px(Math.max(S.range.t0, S.range.t1));
@@ -1500,7 +1521,8 @@ function select(sel) {
 function updateButtons() {
   $('undoBtn').disabled = !S.undo.length;
   $('redoBtn').disabled = !S.redo.length;
-  $('compBtn').disabled = !S.range;
+  $('compBtn').disabled = !S.range && S.pts.dest == null;
+  $('alignHereBtn').disabled = S.takes.length < 1 || !S.clips.length;
   $('deleteBtn').disabled = !S.sel;
   $('splitBtn').disabled = !S.clips.length;
   $('exportBtn').disabled = !S.clips.length;
@@ -1565,7 +1587,8 @@ function renderInspector() {
     <h2>Zo werkt het</h2>
     <ol>
       <li><b>Importeer je takes</b> (wav, aiff, flac, mp3, m4a…), of sleep ze in het venster. De eerste take komt meteen in de <b>edit</b> (bovenste baan); alle takes staan eronder.</li>
-      <li><b>Sleep in een take-baan</b> om een stuk te selecteren en druk <kbd>E</kbd> (of <i>Naar edit</i>). Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten. Zo stel je per zin of maat de beste take samen.</li>
+      <li><b>Vrij tempo (bron/doel, zoals in Sequoia):</b> speel de edit af en druk <kbd>D</kbd> op de noot waar je wilt wisselen (doelpunt). Druk <kbd>H</kbd>: alle takes schuiven zo dat dezelfde passage onder de afspeelkop ligt. Klik de take die je wilt en druk <kbd>E</kbd>: vanaf het doelpunt gaat de edit verder met die take, met een crossfade. Wil je het bronpunt zelf kiezen, klik dan in de take op de noot (of speel hem solo) en druk <kbd>B</kbd> vóór <kbd>E</kbd>. Terug naar de oude take? Zelfde werkwijze, een paar maten later.</li>
+      <li><b>Takes op een klik:</b> sleep in een take-baan om een stuk te selecteren en druk <kbd>E</kbd>. Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten.</li>
       <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
       <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
@@ -1574,7 +1597,8 @@ function renderInspector() {
     <div class="keys">
       <span><kbd>Spatie</kbd> afspelen / stoppen</span>
       <span><kbd>S</kbd> knippen op afspeelkop</span>
-      <span><kbd>E</kbd> selectie naar edit</span>
+      <span><kbd>D</kbd> doelpunt · <kbd>B</kbd> bronpunt · <kbd>E</kbd> overnemen</span>
+      <span><kbd>H</kbd> takes hier uitlijnen</span>
       <span><kbd>A</kbd> crossfade beluisteren</span>
       <span><kbd>Delete</kbd> clip verwijderen</span>
       <span><kbd>←</kbd> <kbd>→</kbd> knip ±1 ms (Shift ±10 ms)</span>
@@ -1755,6 +1779,224 @@ function compRange() {
   const t = takeOf(r.takeId); if (!t) return;
   replaceRange(t, Math.min(r.t0, r.t1), Math.max(r.t0, r.t1));
   S.range = null; S.dirty = true; updateButtons();
+}
+
+/* ---------- bron/doel-montage (zoals in Sequoia, Pyramix, SADiE) ----------
+   Doelpunt D: een plek in de edit. Bronpunt B: dezelfde noot in een take.
+   Overnemen: de edit gaat vanaf D verder met de take vanaf B (alles na D wordt vervangen),
+   met een crossfade op D. Werkt ook als de takes in tempo verschillen. */
+S.pts = { dest: null, src: null };
+
+/** Take waar een bronpunt bij hoort: de take die solo speelt, anders de geselecteerde take. */
+function sourceTakeContext() {
+  const p = S.playing;
+  if (p && p.mode === 'take') return takeOf(p.takeId);
+  if (S.sel && S.sel.kind === 'take') return takeOf(S.sel.id);
+  if (S.range) return takeOf(S.range.takeId);
+  return null;
+}
+
+function setDestPoint(t = S.playhead) {
+  S.pts.dest = Math.max(0, t);
+  S.dirty = true; updateButtons(); if (!S.playing) renderInspector();
+  toast(`Doelpunt op ${fmt(S.pts.dest, 2)}. Druk H om de takes hier uit te lijnen, kies een take en druk E (of zet eerst een bronpunt met B).`);
+}
+
+function setSourcePoint() {
+  const take = sourceTakeContext();
+  if (!take) { toast('Klik eerst in een take-baan (of speel een take solo af) en druk dan B'); return; }
+  const s = S.playhead - take.sync;
+  if (s < 0 || s > take.buffer.duration) { toast('De afspeelkop staat buiten deze take'); return; }
+  S.pts.src = { takeId: take.id, s };
+  S.dirty = true; updateButtons(); if (!S.playing) renderInspector();
+  toast(`Bronpunt in "${take.name}" op ${fmt(s, 2)} (in de take).${S.pts.dest == null ? ' Zet nu een doelpunt in de edit met D.' : ' Druk E om over te nemen.'}`);
+}
+
+function clearPoints() { S.pts = { dest: null, src: null }; S.dirty = true; updateButtons(); }
+
+/** Mono-signaal van een take over [s0,s1] in de bron (buiten de take: stilte). */
+function takeMono(take, s0, s1, sr) {
+  const n = Math.max(1, Math.round((s1 - s0) * sr)), out = new Float32Array(n), d = take.data, tsr = take.buffer.sampleRate, len = d[0].length;
+  for (let k = 0; k < n; k++) {
+    const i = Math.round((s0 + k / sr) * tsr);
+    if (i < 0 || i >= len) continue;
+    let v = 0; for (const ch of d) v += ch[i]; out[k] = v / d.length;
+  }
+  return out;
+}
+/** Inzet-curve (stijging van het volume per 5 ms) van een signaal. */
+function onsetCurve(x, sr, rate = 200) {
+  const hop = Math.round(sr / rate), frames = Math.floor(x.length / hop);
+  const rms = new Float32Array(frames), fl = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) { let s = 0; for (let k = f * hop; k < (f + 1) * hop; k++) s += x[k] * x[k]; rms[f] = Math.sqrt(s / hop); }
+  for (let f = 1; f < frames; f++) fl[f] = Math.max(0, rms[f] - rms[f - 1]);
+  let m = 0; for (const v of fl) m += v; m /= frames || 1;
+  for (let f = 0; f < frames; f++) fl[f] -= m;
+  return fl;
+}
+
+/* Toonhoogteprofiel (chroma): per 5 ms hoeveel energie er in elk van de 12 toonklassen zit.
+   Zo herken je dezelfde passage aan de noten, ook als tempo en klank verschillen. */
+const FFTN = 1024;
+const fftTab = (() => {
+  const N = FFTN, rev = new Uint32Array(N), cos = new Float64Array(N / 2), sin = new Float64Array(N / 2), win = new Float64Array(N);
+  const bits = Math.log2(N);
+  for (let i = 0; i < N; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); rev[i] = r; }
+  for (let i = 0; i < N / 2; i++) { cos[i] = Math.cos((2 * Math.PI * i) / N); sin[i] = -Math.sin((2 * Math.PI * i) / N); }
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
+  return { rev, cos, sin, win };
+})();
+function fftMag(x, at, re, im) {
+  const N = FFTN, { rev, cos, sin, win } = fftTab;
+  for (let i = 0; i < N; i++) { re[rev[i]] = (x[at + i] || 0) * win[i]; im[rev[i]] = 0; }
+  for (let size = 2; size <= N; size <<= 1) {
+    const half = size >> 1, step = N / size;
+    for (let st = 0; st < N; st += size) for (let j = 0; j < half; j++) {
+      const k = j * step, a = st + j, b = a + half;
+      const tr = re[b] * cos[k] - im[b] * sin[k], ti = re[b] * sin[k] + im[b] * cos[k];
+      re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+    }
+  }
+}
+/** Chroma-reeks van x (sr Hz), één vector van 12 per 1/rate s; plat in een Float32Array (frames*12). */
+function chromaSeq(x, sr, rate, frames) {
+  const hop = sr / rate, out = new Float32Array(frames * 12), re = new Float64Array(FFTN), im = new Float64Array(FFTN);
+  const pcs = new Int8Array(FFTN / 2).fill(-1);
+  for (let k = 1; k < FFTN / 2; k++) { const f = (k * sr) / FFTN; if (f >= 60 && f <= 2500) pcs[k] = ((Math.round(12 * Math.log2(f / 440)) % 12) + 12 + 9) % 12; }
+  for (let fr = 0; fr < frames; fr++) {
+    fftMag(x, Math.round(fr * hop), re, im);
+    const v = out.subarray(fr * 12, fr * 12 + 12);
+    for (let k = 1; k < FFTN / 2; k++) if (pcs[k] >= 0) v[pcs[k]] += Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+    let m = 0; for (let c = 0; c < 12; c++) m += v[c]; m /= 12;
+    let nn = 0; for (let c = 0; c < 12; c++) { v[c] -= m; nn += v[c] * v[c]; }
+    nn = Math.sqrt(nn);
+    if (m < 1e-3 || nn < 1e-9) v.fill(0); else for (let c = 0; c < 12; c++) v[c] /= nn;
+  }
+  return out;
+}
+/** Beste verschuiving van chroma-reeks x t.o.v. e (gewogen naar het midden). */
+function bestLagChroma(e, n, x, maxL) {
+  const w = new Float32Array(n);
+  for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * (i + 0.5)) / n);
+  let best = 0, bestSc = -Infinity;
+  for (let l = -maxL; l <= maxL; l++) {
+    let dot = 0, ws = 0;
+    for (let i = 0; i < n; i++) {
+      const a = i * 12, b = (i + l + maxL) * 12;
+      if (e[a] === 0 && e[a + 1] === 0 && e[a + 2] === 0) continue;   // stilte in de edit telt niet mee
+      let d = 0; for (let c = 0; c < 12; c++) d += e[a + c] * (x[b + c] || 0);
+      dot += w[i] * d; ws += w[i];
+    }
+    const sc = ws > 0 ? dot / ws : -Infinity;
+    if (sc > bestSc) { bestSc = sc; best = l; }
+  }
+  return { lag: best, score: bestSc };
+}
+
+function smoothCurve(x, sigma) {
+  if (sigma < 0.5) return x;
+  const r = Math.ceil(sigma * 3), k = [];
+  let ks = 0; for (let i = -r; i <= r; i++) { const v = Math.exp(-(i * i) / (2 * sigma * sigma)); k.push(v); ks += v; }
+  const out = new Float32Array(x.length);
+  for (let i = 0; i < x.length; i++) { let v = 0; for (let j = -r; j <= r; j++) { const q = i + j; if (q >= 0 && q < x.length) v += x[q] * k[j + r]; } out[i] = v / ks; }
+  return out;
+}
+/**
+ * Beste verschuiving (in frames) van x t.o.v. e, gewogen naar het midden van e (Hann-venster),
+ * zodat een tempoverschil aan de randen weinig uitmaakt. x is e.length + 2*maxL lang.
+ */
+function bestLag(e, x, maxL, lo = -maxL, hi = maxL) {
+  const n = e.length, w = new Float32Array(n);
+  let ee = 0;
+  for (let i = 0; i < n; i++) { w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * (i + 0.5)) / n); ee += w[i] * e[i] * e[i]; }
+  let best = 0, bestSc = -Infinity;
+  for (let l = lo; l <= hi; l++) {
+    let dot = 0, ex = 0;
+    const o = l + maxL;
+    for (let i = 0; i < n; i++) { const y = x[i + o] || 0; dot += w[i] * e[i] * y; ex += w[i] * y * y; }
+    const sc = ex > 1e-12 && ee > 1e-12 ? dot / Math.sqrt(ee * ex) : -Infinity;
+    if (sc > bestSc) { bestSc = sc; best = l; }
+  }
+  return { lag: best, score: bestSc };
+}
+
+/**
+ * Lijn de takes lokaal uit op wat er in de edit rond tijd t klinkt, zoekend tot ±R s.
+ * Grof op de noten (toonhoogteprofiel, venster 6 s, midden telt zwaarst), daarna fijn op de inzetten
+ * (±8 ms, venster 1 s, binnen ±150 ms).
+ * Alleen de take-banen verschuiven (sync); de clips in de edit blijven staan.
+ */
+function alignTakesHere(t = S.playhead, R = 8) {
+  const W = 3, Wf = 0.5, rate = 200, sr = 8000;
+  if (!S.clips.some((c) => c.start < t + W && end(c) > t - W)) { toast('Er staat rond de afspeelkop niets in de edit om op uit te lijnen'); return; }
+  const editOn = onsetCurve(renderMono(t - W - 0.2, t + W + 0.2, sr), sr, rate);
+  const cut = (a, from, len) => a.subarray(from, from + len);
+  const n = Math.round(2 * W * rate), nf = Math.round(2 * Wf * rate), off = Math.round(0.2 * rate);
+  const NF = FFTN / sr;   // FFT-venster in s; begin zo dat frame i gecentreerd ligt zoals bij de inzet-curve
+  const eChroma = chromaSeq(renderMono(t - W - NF / 2, t + W + NF / 2, sr), sr, rate, n);
+  const eC = cut(smoothCurve(editOn, 8), off, n);
+  const eF = cut(smoothCurve(editOn, 1.6), off + Math.round((W - Wf) * rate), nf);
+  let ee = 0; for (const v of eC) ee += v * v;
+  if (ee < 1e-12) { toast('Te stil rond de afspeelkop om uit te lijnen'); return; }
+  const res = [];
+  pushUndo();
+  for (const take of S.takes) {
+    const s0 = t - take.sync, maxL = Math.round(R * rate);
+    const raw = onsetCurve(takeMono(take, s0 - W - R, s0 + W + R, sr), sr, rate);
+    const xChroma = chromaSeq(takeMono(take, s0 - W - R - NF / 2, s0 + W + R + NF / 2, sr), sr, rate, n + 2 * maxL);
+    let coarse = bestLagChroma(eChroma, n, xChroma, maxL);
+    if (coarse.score < 0.3) coarse = bestLag(eC, smoothCurve(raw, 8), maxL);   // bijv. slagwerk zonder toonhoogte
+    if (coarse.score < 0.25) { res.push(`${take.name}: niet gevonden`); continue; }
+    // fijn: kort venster rond het midden, binnen ±150 ms van de grove schatting
+    const xf = smoothCurve(raw, 1.6), fl = Math.round(0.15 * rate), base = Math.round((W - Wf) * rate);
+    const xs = new Float32Array(nf + 2 * maxL);
+    for (let i = 0; i < xs.length; i++) xs[i] = xf[i + base] || 0;
+    const fine = bestLag(eF, xs, maxL, coarse.lag - fl, coarse.lag + fl);
+    const lag = fine.score > 0.2 ? fine.lag : coarse.lag;
+    take.sync -= lag / rate;
+    res.push(`${take.name} ${lag ? (lag > 0 ? '−' : '+') + Math.abs(lag / rate).toFixed(2) + ' s' : 'klopte al'}`);
+  }
+  afterEdit();
+  toast('Takes uitgelijnd rond ' + fmt(t, 1) + ': ' + res.join(' · '));
+}
+
+/** Overnemen: vanaf doelpunt d verder met take vanaf bronpositie s; alles na d wordt vervangen. */
+function assembleEdit(take, d, s) {
+  if (s < 0 || s > take.buffer.duration - 0.05) { toast('Het bronpunt ligt buiten de take'); return; }
+  const later = S.clips.filter((c) => c.start > d + 0.001).length;
+  mutate(() => {
+    const out = [];
+    for (const c of S.clips) {
+      if (end(c) <= d + 1e-9) out.push(c);
+      else if (c.start < d) out.push({ ...c, dur: d - c.start, fadeOut: 0.005 });
+    }
+    const nc = newClip(take, d, s, take.buffer.duration - s);
+    out.push(nc);
+    S.clips = out; normalize();
+    autoXfades(nc);
+    take.sync = d - s;                                   // take-baan ligt nu gelijk met de edit op dit punt
+    const j = junctions().find((x) => x.b.id === nc.id);
+    S.sel = j ? { kind: 'junction', a: j.a.id, b: j.b.id } : { kind: 'clip', id: nc.id };
+    S.pts = { dest: null, src: null };
+    S.playhead = d;
+  });
+  toast(`Vanaf ${fmt(d, 1)} verder met "${take.name}"${later ? ` (${later} latere clip${later === 1 ? '' : 's'} vervangen — ⌘Z maakt ongedaan)` : ''}. Stel de overgang hieronder fijn af.`);
+}
+
+/** E: selectie uit een take overnemen, of overnemen vanaf doel-/bronpunt. */
+function editAction() {
+  if (S.range) { compRange(); return; }
+  const d = S.pts.dest;
+  if (d == null) { toast('Zet eerst een doelpunt in de edit (D), of selecteer een stuk in een take'); return; }
+  let take, s;
+  if (S.pts.src) { take = takeOf(S.pts.src.takeId); s = S.pts.src.s; }
+  else {
+    take = sourceTakeContext();
+    if (!take) { toast('Kies een take: klik op de naam of in de baan van de take (of zet een bronpunt met B)'); return; }
+    s = d - take.sync;                                   // zonder bronpunt: de plek die nu onder het doelpunt ligt
+  }
+  if (S.playing) stop();
+  assembleEdit(take, d, s);
 }
 
 /* ---------- markers + herhalen ---------- */
@@ -2417,7 +2659,10 @@ $('fileInput').onchange = (e) => { importFiles(e.target.files); e.target.value =
 $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
-$('compBtn').onclick = compRange;
+$('compBtn').onclick = editAction;
+$('destBtn').onclick = () => setDestPoint();
+$('srcBtn').onclick = setSourcePoint;
+$('alignHereBtn').onclick = () => alignTakesHere();
 $('alignBtn').onclick = openAlign;
 $('markBtn').onclick = () => addMarker();
 $('deleteBtn').onclick = () => deleteSelection();
@@ -2452,7 +2697,10 @@ document.addEventListener('keydown', (e) => {
   const sj = S.sel && S.sel.kind === 'junction' ? junctionOf(S.sel.a, S.sel.b) : null;
   switch (k) {
     case 's': case 'S': splitAt(S.playhead); break;
-    case 'e': case 'E': compRange(); break;
+    case 'e': case 'E': editAction(); break;
+    case 'd': case 'D': setDestPoint(); break;
+    case 'b': case 'B': setSourcePoint(); break;
+    case 'h': case 'H': alignTakesHere(); break;
     case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
     case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(e.altKey); break;
     case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
@@ -2464,7 +2712,7 @@ document.addEventListener('keydown', (e) => {
     case 'l': case 'L': toggleLoop(); break;
     case 'Home': S.playhead = 0; S.view = 0; S.dirty = true; updateScroll(); if (S.playing) restartAtPlayhead(); break;
     case 'End': S.playhead = editEnd(); break;
-    case 'Escape': S.range = null; select(null); break;
+    case 'Escape': S.range = null; clearPoints(); select(null); break;
     case 'ArrowLeft': case 'ArrowRight': {
       e.preventDefault();
       const dir = k === 'ArrowLeft' ? -1 : 1;
@@ -2692,6 +2940,7 @@ async function importProjectFile(file) {
 function resetWorkspace() {
   stop();
   S.takes = []; S.clips = []; S.markers = []; S.undo = []; S.redo = [];
+  S.pts = { dest: null, src: null };
   S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0;
   updateProjectLine(); setSaveState('wordt automatisch bewaard');
   buildHeads(); S.loading = true; afterEdit(); S.loading = false;
@@ -2725,6 +2974,7 @@ async function loadProject(id) {
     S.takes = takes;
     S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
     S.markers = rec.markers || [];
+    S.pts = { dest: null, src: null };
     S.nextId = Math.max(rec.nextId || 1, ...takes.map((t) => t.id + 1), ...S.clips.map((c) => c.id + 1));
     S.project = { id: rec.id, name: rec.name, created: rec.created };
     S.undo = []; S.redo = []; S.sel = null; S.range = null;
@@ -2796,7 +3046,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, syncClips: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
+  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -2805,7 +3055,7 @@ function loadSettings() {
   if (typeof o.zc === 'boolean') S.zeroCross = o.zc;
   if (typeof o.defXf === 'number') S.defXf = o.defXf;
   if (typeof o.rts === 'boolean') S.returnToStart = o.rts;
-  if (typeof o.syncClips === 'boolean') S.syncClips = o.syncClips;
+  if (typeof o.sc2 === 'boolean') S.syncClips = o.sc2;
   if (typeof o.preroll === 'number') S.preroll = o.preroll;
   if (o.fmt) S.exportFmt = o.fmt;
   if (typeof o.norm === 'boolean') S.normalize = o.norm;
