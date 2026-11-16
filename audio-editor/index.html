@@ -63,6 +63,13 @@ header.bar {
 .brand { display: flex; flex-direction: column; margin-right: 8px; }
 .brand strong { font-size: 15px; }
 .brand span { color: var(--muted); font-size: 11px; }
+button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 11px; text-decoration: underline; text-underline-offset: 2px; }
+button.linkish:hover:not(:disabled) { background: none; color: #7db6ff; }
+.plist { display: grid; gap: 6px; max-width: 860px; margin-top: 8px; }
+.pitem { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.pitem.cur { border-color: var(--accent); }
+.pitem .pname { font-weight: 600; min-width: 160px; }
+.pitem .pmeta { color: var(--muted); flex: 1; min-width: 180px; }
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
 .clock {
@@ -108,6 +115,8 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .hint { color: var(--muted); font-size: 12px; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; color: var(--muted); }
 .kv b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+body.aligning .timeline { max-height: 30vh; min-height: 150px; }
+#alCanvas { width: 100%; height: 352px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; }
 #xfCanvas { width: 100%; height: 240px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: col-resize; }
 .help { max-width: 860px; color: var(--muted); }
 .help h2 { color: var(--text); font-size: 15px; margin: 0 0 8px; }
@@ -138,23 +147,27 @@ kbd {
   header.bar { padding: 8px 16px; }
   .heads { width: 110px; }
   .scrollrow { padding-left: 118px; }
-  .brand span { display: none; }
 }
 </style>
 </head>
 <body>
 <header class="bar">
-  <div class="brand"><strong>Take Crossfader</strong><span>audio-editor voor crossfades tussen takes</span></div>
+  <div class="brand"><strong>Take Crossfader</strong><span><button id="projName" class="linkish" title="Projecten openen, hernoemen of een nieuw project beginnen">Nog geen project</button> · <span id="saveState">wordt automatisch bewaard</span></span></div>
   <div class="tools">
+    <button id="projBtn" title="Bewaarde projecten openen, een nieuw project beginnen">Projecten</button>
     <button id="importBtn" class="primary">Importeer takes</button>
-    <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus" hidden>
+    <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus,.crossfader" hidden>
+    <input type="file" id="projFileInput" accept=".crossfader,application/octet-stream" hidden>
     <button id="demoBtn" title="Genereer drie voorbeeld-takes om mee te oefenen">Demo</button>
     <span class="sep"></span>
     <button id="playBtn" title="Afspelen / stoppen (spatie)">▶</button>
     <span id="clock" class="clock">0:00.000</span>
+    <label title="Na stoppen springt de afspeelkop terug naar waar je begon met afspelen"><input type="checkbox" id="rtsChk" checked> ↩ Terug naar start</label>
     <span class="sep"></span>
     <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
     <button id="compBtn" title="Geselecteerd stuk uit een take in de edit plaatsen (E)">Naar edit</button>
+    <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
+    <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
     <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
     <button id="undoBtn" title="Ongedaan maken (Ctrl/⌘+Z)">↶</button>
     <button id="redoBtn" title="Opnieuw (Ctrl/⌘+Shift+Z)">↷</button>
@@ -163,14 +176,10 @@ kbd {
     <button id="zoomIn" title="Inzoomen (+)">+</button>
     <button id="zoomFit" title="Alles in beeld (F)">Passend</button>
     <label title="Klikken aan clipranden en afspeelkop (Shift tijdens slepen schakelt tijdelijk uit)"><input type="checkbox" id="snapChk" checked> Snap</label>
+    <label title="Knippen (S) en weghalen schuiven het knippunt tot max. 5 ms op naar de dichtstbijzijnde nuldoorgang: geen tikjes"><input type="checkbox" id="zcChk" checked> Nuldoorgang</label>
     <label title="Lengte van nieuwe crossfades bij 'Naar edit' en bij het wisselen van take">Std. crossfade <input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</label>
     <span class="sep"></span>
-    <select id="bitDepth" aria-label="Exportformaat">
-      <option value="16">WAV 16-bit</option>
-      <option value="24" selected>WAV 24-bit</option>
-      <option value="32">WAV 32-bit float</option>
-    </select>
-    <button id="exportBtn">Exporteer</button>
+    <button id="exportBtn" title="Edit (of selectie) exporteren als WAV of MP3">Exporteer…</button>
     <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
   </div>
 </header>
@@ -224,7 +233,9 @@ const S = {
   sel: null, range: null,
   playing: null,
   undo: [], redo: [],
-  snap: true, defXf: 0.04, preroll: 2, loopAudition: false,
+  markers: [], exportFmt: 'wav24', normalize: false, normDb: -1,
+  zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: true, returnToStart: true,
+  project: null, loading: false,
   drag: null, dirty: true, xfView: null,
   meter: 0,
 };
@@ -289,12 +300,12 @@ function computePeaks(buf) {
   return { mn, mx };
 }
 
-function addTake(name, buffer) {
+function addTake(name, buffer, file) {
   const data = [];
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) data.push(buffer.getChannelData(ch));
   const used = new Set(S.takes.map((t) => t.color));
   const color = COLORS.find((c) => !used.has(c)) || COLORS[S.takes.length % COLORS.length];
-  const t = { id: newId(), name, buffer, data, peaks: computePeaks(buffer), sync: 0, color };
+  const t = { id: newId(), name, buffer, data, peaks: computePeaks(buffer), sync: 0, color, file: file || null, fileKey: uid(), stored: false };
   S.takes.push(t);
   if (S.clips.length === 0) {
     pushUndo();
@@ -307,7 +318,17 @@ function newClip(take, start, offset, dur) {
   return { id: newId(), takeId: take.id, start, offset, dur, gain: 0, fadeIn: 0.005, fadeOut: 0.005, xShape: 'eqp' };
 }
 
+function decodeAudio(ac, ab) {
+  return new Promise((res, rej) => {
+    const p = ac.decodeAudioData(ab, res, rej);
+    if (p && p.then) p.then(res, rej);
+  });
+}
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+
 async function importFiles(files) {
+  const proj = [...files].find((f) => /\.crossfader$/i.test(f.name));
+  if (proj) { importProjectFile(proj); return; }
   const list = [...files].filter((f) => /^audio\//.test(f.type) || /\.(wav|aiff?|flac|mp3|m4a|aac|ogg|oga|opus|webm|caf)$/i.test(f.name));
   if (!list.length) { toast('Geen audiobestanden gevonden'); return; }
   const ac = ensureAC();
@@ -317,12 +338,8 @@ async function importFiles(files) {
   for (const f of list) {
     busy(true, `Importeren ${++i}/${list.length}: ${f.name}`);
     try {
-      const ab = await f.arrayBuffer();
-      const buf = await new Promise((res, rej) => {
-        const p = ac.decodeAudioData(ab, res, rej);
-        if (p && p.then) p.then(res, rej);
-      });
-      addTake(f.name.replace(/\.[^.]+$/, ''), buf);
+      const buf = await decodeAudio(ac, await f.arrayBuffer());
+      addTake(f.name.replace(/\.[^.]+$/, ''), buf, f);
     } catch (err) {
       console.error(err);
       toast(`Kon "${f.name}" niet lezen (formaat niet ondersteund door deze browser?)`);
@@ -339,6 +356,7 @@ function removeTake(t) {
   stop();
   S.takes = S.takes.filter((x) => x !== t);
   S.clips = S.clips.filter((c) => c.takeId !== t.id);
+  S.needCleanup = true;
   S.undo = []; S.redo = [];
   if (S.range && S.range.takeId === t.id) S.range = null;
   S.sel = null;
@@ -481,12 +499,34 @@ function replaceRange(take, t0, t1) {
   });
 }
 
+/**
+ * Dichtstbijzijnde nuldoorgang (binnen ±maxDev s) in de bron van clip c rond tijdlijn-tijd t.
+ * Een knip op een nuldoorgang geeft geen tik, ook zonder (of met een heel korte) fade.
+ */
+function zeroCrossAt(c, t, maxDev = 0.005) {
+  if (!S.zeroCross || !c) return t;
+  const take = takeOf(c.takeId), d = take.data, sr = take.buffer.sampleRate, n = d[0].length;
+  const mono = (k) => { let v = 0; for (const ch of d) v += ch[k]; return v; };
+  const s0 = Math.round((t - c.start + c.offset) * sr), dev = Math.round(maxDev * sr);
+  for (let k = 0; k <= dev; k++) {
+    for (const i of [s0 - k, s0 + k]) {
+      if (i <= 0 || i >= n) continue;
+      const a = mono(i - 1), b = mono(i);
+      if ((a <= 0 && b > 0) || (a >= 0 && b < 0) || b === 0) {
+        const nt = c.start + (i / sr - c.offset);
+        if (nt > c.start + MIN_DUR && nt < end(c) - MIN_DUR) return nt;
+      }
+    }
+  }
+  return t;
+}
+const clipAt = (t) => [...S.clips].reverse().find((x) => x.start + MIN_DUR < t && t < end(x) - MIN_DUR);
+
 function splitAt(t) {
   let c = S.sel && S.sel.kind === 'clip' ? clipOf(S.sel.id) : null;
-  if (!c || !(c.start + MIN_DUR < t && t < end(c) - MIN_DUR)) {
-    c = [...S.clips].reverse().find((x) => x.start + MIN_DUR < t && t < end(x) - MIN_DUR);
-  }
+  if (!c || !(c.start + MIN_DUR < t && t < end(c) - MIN_DUR)) c = clipAt(t);
   if (!c) { toast('Geen clip onder de afspeelkop'); return; }
+  t = zeroCrossAt(c, t);
   mutate(() => {
     const k = t - c.start;
     const n = { ...c, id: newId(), start: t, offset: c.offset + k, dur: c.dur - k, fadeIn: 0.005, xShape: 'eqp' };
@@ -528,6 +568,7 @@ function resolveDrop(m, insert) {
     else out.push({ ...c, start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
   }
   S.clips = out;
+  if (insert) for (const mk of S.markers) if (mk.t >= s - 1e-9) mk.t += m.dur;
   normalize();
   const i = S.clips.indexOf(m), p = S.clips[i - 1], n = S.clips[i + 1];
   if (p && Math.abs(end(p) - m.start) < 1e-6) setXfLen(p, m, S.defXf);
@@ -543,28 +584,36 @@ function gapAt(t) {
   return { a, b: next.start, next };
 }
 
-/** Haal [t0,t1] uit de edit; alles erna schuift aan en de naad krijgt een standaard-crossfade. */
-function deleteRange(t0, t1) {
+/**
+ * Haal [t0,t1] uit de edit.
+ * ripple = true: alles erna schuift aan en de naad krijgt een standaard-crossfade.
+ * ripple = false: er blijft stilte over; de randen krijgen korte fades tegen klikjes.
+ */
+function deleteRange(t0, t1, ripple = true) {
   if (t1 - t0 < 0.005) return;
-  const d = t1 - t0;
+  t0 = zeroCrossAt(clipAt(t0), t0); t1 = zeroCrossAt(clipAt(t1), t1);
+  const d = ripple ? t1 - t0 : 0;
   mutate(() => {
     const out = [];
     for (const c of S.clips) {
       const ce = end(c);
       if (ce <= t0 + 1e-9) { out.push(c); continue; }
       if (c.start >= t1 - 1e-9) { out.push({ ...c, start: c.start - d }); continue; }
-      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.005 });
-      if (ce > t1) out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t0, offset: c.offset + (t1 - c.start), dur: ce - t1, fadeIn: 0.005, xShape: 'eqp' });
+      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.01 });
+      if (ce > t1) out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t1 - d, offset: c.offset + (t1 - c.start), dur: ce - t1, fadeIn: 0.01, xShape: 'eqp' });
     }
     S.clips = out; normalize();
-    for (let i = 1; i < S.clips.length; i++) {
-      const a = S.clips[i - 1], b = S.clips[i];
-      if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
+    if (ripple) {
+      S.markers = S.markers.filter((mk) => mk.t < t0 || mk.t >= t1).map((mk) => (mk.t >= t1 ? { ...mk, t: mk.t - d } : mk));
+      for (let i = 1; i < S.clips.length; i++) {
+        const a = S.clips[i - 1], b = S.clips[i];
+        if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
+      }
     }
     S.sel = null;
     S.playhead = Math.max(0, t0 - 1);
   });
-  toast(`${fmt(d, 2)} weggehaald; de rest is aangeschoven`);
+  toast(ripple ? `${fmt(t1 - t0, 2)} weggehaald; de rest is aangeschoven` : `${fmt(t1 - t0, 2)} weggehaald; er is stilte voor in de plaats gekomen`);
 }
 
 /** Schuif clip c en alles erna naar links, tot tegen de vorige clip (of 0:00). */
@@ -575,6 +624,7 @@ function closeGapBefore(c) {
   const from = c.start;
   mutate(() => {
     for (const x of S.clips) if (x.start >= from - 1e-9) x.start -= delta;
+    for (const mk of S.markers) if (mk.t >= from - 1e-9) mk.t -= delta;
     normalize();
     const i = S.clips.indexOf(c), p = S.clips[i - 1];
     if (p && Math.abs(end(p) - c.start) < 1e-6) setXfLen(p, c, S.defXf);
@@ -596,7 +646,7 @@ function swapTake(c, take) {
   });
 }
 
-function deleteSelection() {
+function deleteSelection(leaveGap = false) {
   const s = S.sel;
   if (!s) return;
   if (s.kind === 'clip') {
@@ -606,20 +656,23 @@ function deleteSelection() {
     if (j) mutate(() => setXfLen(j.a, j.b, 0));
   } else if (s.kind === 'take') {
     const t = takeOf(s.id); if (t) removeTake(t);
+  } else if (s.kind === 'marker') {
+    mutate(() => { S.markers = S.markers.filter((m) => m.id !== s.id); S.sel = null; });
   } else if (s.kind === 'erange') {
-    deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1));
+    deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1), !leaveGap);
   } else if (s.kind === 'gap') {
     const g = gapAt(s.t); if (g) closeGapBefore(g.next);
   }
 }
 
 /* ---------- undo ---------- */
-function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]) }); }
+function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers }); }
 function pushUndo() { S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift(); S.redo.length = 0; }
 function restore(str) {
   const o = JSON.parse(str);
   S.clips = o.clips.filter((c) => takeOf(c.takeId));
   o.sync.forEach(([id, s]) => { const t = takeOf(id); if (t) t.sync = s; });
+  S.markers = o.markers || [];
   afterEdit();
 }
 function undo() {
@@ -644,6 +697,8 @@ function validateSel() {
   else if (s.kind === 'junction' && !junctionOf(s.a, s.b)) S.sel = null;
   else if (s.kind === 'take' && !takeOf(s.id)) S.sel = null;
   else if (s.kind === 'gap' && !gapAt(s.t)) S.sel = null;
+  else if (s.kind === 'align' && (!alignSrc(s, 'a') || !alignSrc(s, 'b'))) S.sel = null;
+  else if (s.kind === 'marker' && !S.markers.some((m) => m.id === s.id)) S.sel = null;
 }
 
 function afterEdit() {
@@ -652,9 +707,10 @@ function afterEdit() {
   buildHeads(); renderInspector(); updateButtons(); updateScroll();
   const p = S.playing;
   if (p && p.mode === 'edit') {
-    if (p.loop) play(p.loop[0], p.loop[1], p.loop);
-    else play(S.playhead);
+    if (p.loop) play(p.loop[0], p.loop[1], p.loop, true);
+    else play(S.playhead, undefined, undefined, true);
   }
+  scheduleSave();
 }
 
 /* ---------- playback ---------- */
@@ -699,7 +755,8 @@ function scheduleGraph(ac, dest, from, to, when) {
   return srcs;
 }
 
-function play(from, to, loop) {
+function play(from, to, loop, keepStart) {
+  const prevStart = keepStart && S.playing ? S.playing.start : null;
   stopSources();
   if (!S.clips.length) { toast('De edit is leeg'); return; }
   const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
@@ -708,7 +765,7 @@ function play(from, to, loop) {
   if (from >= stopAt - 0.01) { if (loop) return; from = 0; }
   const when = ac.currentTime + 0.06;
   const srcs = scheduleGraph(ac, S.master, from, stopAt, when);
-  S.playing = { mode: 'edit', srcs, from, to: stopAt, when, loop: loop || null };
+  S.playing = { mode: 'edit', srcs, from, to: stopAt, when, loop: loop || null, start: prevStart ?? from };
   S.playhead = from;
   updatePlayBtn();
 }
@@ -722,7 +779,7 @@ function playTake(take, from) {
   const when = ac.currentTime + 0.06;
   const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
   src.start(when + Math.max(0, take.sync - from), Math.max(0, from - take.sync));
-  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from, to: stopAt, when, loop: null };
+  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from, to: stopAt, when, loop: null, start: from };
   S.playhead = from;
   updatePlayBtn(); buildHeads();
 }
@@ -735,7 +792,7 @@ function playRange(take, t0, t1) {
   const when = ac.currentTime + 0.06;
   const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
   src.start(when, t0 - take.sync, t1 - t0);
-  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from: t0, to: t1, when, loop: null };
+  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from: t0, to: t1, when, loop: null, start: t0 };
   updatePlayBtn(); buildHeads();
 }
 
@@ -745,7 +802,14 @@ function stopSources() {
   p.srcs.forEach((s) => { try { s.stop(); } catch (_) { /* already stopped */ } try { s.disconnect(); } catch (_) { /* noop */ } });
   S.playing = null;
 }
-function stop() { const wasTake = S.playing && S.playing.mode === 'take'; stopSources(); updatePlayBtn(); if (wasTake) buildHeads(); }
+function stop() {
+  const p = S.playing, wasTake = p && p.mode === 'take';
+  stopSources(); updatePlayBtn(); if (wasTake) buildHeads();
+  if (p && S.returnToStart && p.start != null) {
+    S.playhead = p.start; S.dirty = true;
+    if (px(S.playhead) < 0 || px(S.playhead) > cssW) { S.view = Math.max(0, S.playhead - 1); updateScroll(); }
+  }
+}
 function togglePlay() { if (S.playing) stop(); else play(S.playhead); }
 
 function auditionJunction() {
@@ -786,37 +850,119 @@ function renderMono(t0, t1, sr) {
   return out;
 }
 
-async function exportWav() {
+const EXPORT_FORMATS = {
+  wav16: { label: 'WAV 16-bit (cd-kwaliteit)', ext: 'wav', bits: 16 },
+  wav24: { label: 'WAV 24-bit (studio, aanbevolen)', ext: 'wav', bits: 24 },
+  wav32: { label: 'WAV 32-bit float (geen clipping mogelijk)', ext: 'wav', bits: 32 },
+  mp3_320: { label: 'MP3 320 kbps (delen, hoge kwaliteit)', ext: 'mp3', kbps: 320 },
+  mp3_192: { label: 'MP3 192 kbps (delen, kleiner bestand)', ext: 'mp3', kbps: 192 },
+};
+const LAME_URL = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js';
+let lamePromise = null;
+function loadLame() {
+  if (window.lamejs) return Promise.resolve(window.lamejs);
+  if (!lamePromise) {
+    lamePromise = new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = LAME_URL; sc.async = true; sc.crossOrigin = 'anonymous';
+      sc.onload = () => (window.lamejs ? res(window.lamejs) : rej(new Error('MP3-encoder niet beschikbaar')));
+      sc.onerror = () => rej(new Error('De MP3-encoder kon niet worden geladen. Is er internet? (Na één keer werkt het ook offline.)'));
+      document.head.appendChild(sc);
+    });
+    lamePromise.catch(() => { lamePromise = null; });
+  }
+  return lamePromise;
+}
+
+async function encodeMp3(buf, kbps) {
+  const lame = await loadLame();
+  const nch = Math.min(2, buf.numberOfChannels), sr = buf.sampleRate;
+  const enc = new lame.Mp3Encoder(nch, sr, kbps);
+  const chs = []; for (let c = 0; c < nch; c++) chs.push(buf.getChannelData(c));
+  const BLOCK = 1152 * 20, parts = [];
+  const toI16 = (f, a, n) => { const o = new Int16Array(n); for (let i = 0; i < n; i++) { const v = clamp(f[a + i], -1, 1); o[i] = v < 0 ? v * 32768 : v * 32767; } return o; };
+  for (let a = 0; a < buf.length; a += BLOCK) {
+    const n = Math.min(BLOCK, buf.length - a);
+    const L = toI16(chs[0], a, n), R = nch > 1 ? toI16(chs[1], a, n) : null;
+    const out = R ? enc.encodeBuffer(L, R) : enc.encodeBuffer(L);
+    if (out.length) parts.push(new Uint8Array(out));
+    if ((a / BLOCK) % 20 === 0) { busy(true, `MP3 maken… ${Math.round((a / buf.length) * 100)}%`); await new Promise((r) => setTimeout(r)); }
+  }
+  const fin = enc.flush(); if (fin.length) parts.push(new Uint8Array(fin));
+  return new Blob(parts, { type: 'audio/mpeg' });
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+/** Bestandsnaam die elke browser accepteert: accenten weg (é → e), alleen letters, cijfers, spatie en - _ ( ) . , */
+const safeName = (n) => (n || 'edit').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _().,-]+/g, '-').replace(/-+/g, '-').replace(/\s+/g, ' ').replace(/^[-. ]+|[-. ]+$/g, '').slice(0, 80) || 'edit';
+
+/** Render [a,b] van de edit en sla op als WAV of MP3, eventueel genormaliseerd. */
+async function exportAudio(a = 0, b = editEnd(), suffix = '') {
   if (!S.clips.length) { toast('De edit is leeg'); return; }
+  const fmtDef = EXPORT_FORMATS[S.exportFmt] || EXPORT_FORMATS.wav24;
   const ac = ensureAC();
-  const sr = ac.sampleRate, len = editEnd();
+  const sr = ac.sampleRate, len = b - a;
+  if (len <= 0.01) { toast('Niets om te exporteren'); return; }
   const used = new Set(S.clips.map((c) => c.takeId));
   const nch = Math.max(1, ...S.takes.filter((t) => used.has(t.id)).map((t) => t.buffer.numberOfChannels));
-  const bits = +$('bitDepth').value;
   busy(true, 'Exporteren…');
   try {
+    if (fmtDef.ext === 'mp3') { busy(true, 'MP3-encoder laden…'); await loadLame(); busy(true, 'Exporteren…'); }
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const oac = new OAC(Math.min(nch, 2), Math.max(1, Math.ceil(len * sr)), sr);
-    scheduleGraph(oac, oac.destination, 0, len, 0);
+    scheduleGraph(oac, oac.destination, a, b, 0);
     const buf = await oac.startRendering();
-    let peak = 0;
-    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-      const d = buf.getChannelData(ch);
-      for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > peak) peak = v; }
+    const peakOf = () => {
+      let pk = 0;
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > pk) pk = v; } }
+      return pk;
+    };
+    let peak = peakOf(), normInfo = '';
+    if (S.normalize && peak > 1e-6) {
+      const g = dbLin(S.normDb) / peak;
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] *= g; }
+      normInfo = ` · genormaliseerd (${g >= 1 ? '+' : ''}${(20 * Math.log10(g)).toFixed(1)} dB)`;
+      peak = peakOf();
     }
-    const blob = encodeWav(buf, bits);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'edit.wav';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    const blob = fmtDef.ext === 'mp3' ? await encodeMp3(buf, fmtDef.kbps) : encodeWav(buf, fmtDef.bits);
+    const name = safeName(S.project ? S.project.name : 'edit') + suffix + '.' + fmtDef.ext;
+    download(blob, name);
     const pdb = peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞';
-    toast(peak > 1 && bits !== 32
-      ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Verlaag de gain.`
-      : `Geëxporteerd: ${fmt(len)} · ${sr} Hz · ${bits}-bit · piek ${pdb} dBFS`);
+    const mb = (blob.size / 1048576).toFixed(1);
+    toast(peak > 1 && fmtDef.bits !== 32
+      ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Zet normaliseren aan of verlaag de gain.`
+      : `"${name}" geëxporteerd: ${fmt(len)} · ${mb} MB · piek ${pdb} dBFS${normInfo}`);
   } catch (err) {
-    console.error(err); toast('Export mislukt: ' + err.message);
+    console.error(err); toast('Export mislukt: ' + (err.message || err));
   } finally { busy(false); }
+}
+
+function inspectExport(el) {
+  const sel = S.sel && S.sel.kind === 'export' ? S.sel : {};
+  const r = S.lastRange;
+  el.innerHTML = `
+    <div class="insp-head"><h2>Exporteren</h2><span>${S.project ? esc(S.project.name) : 'edit'} · ${fmt(editEnd(), 1)}</span></div>
+    <div class="row">
+      <label>Formaat <select id="exFmt">${Object.entries(EXPORT_FORMATS).map(([k, v]) => `<option value="${k}"${k === S.exportFmt ? ' selected' : ''}>${v.label}</option>`).join('')}</select></label>
+      <label title="Zet de luidste piek op dit niveau. −1 dBFS laat wat ruimte voor MP3/streaming."><input type="checkbox" id="exNorm"${S.normalize ? ' checked' : ''}> Normaliseren naar</label>
+      <label><input type="number" id="exNormDb" value="${S.normDb}" step="0.5" min="-24" max="0" style="width:64px"> dBFS</label>
+    </div>
+    <div class="row">
+      <button id="exAll" class="primary">Hele edit exporteren</button>
+      ${r ? `<button id="exSel">Alleen selectie ${fmt(r[0], 1)} – ${fmt(r[1], 1)}</button>` : ''}
+      <span class="hint">WAV voor verdere bewerking of mastering; MP3 om te delen. ${S.exportFmt.startsWith('mp3') ? 'De MP3-encoder wordt de eerste keer van internet geladen; daarna werkt het ook offline.' : ''}</span>
+    </div>`;
+  $('exFmt').onchange = (e) => { S.exportFmt = e.target.value; saveSettings(); renderInspector(); };
+  $('exNorm').onchange = (e) => { S.normalize = e.target.checked; saveSettings(); };
+  $('exNormDb').onchange = (e) => { S.normDb = clamp(+e.target.value || -1, -24, 0); saveSettings(); };
+  $('exAll').onclick = () => exportAudio(0, editEnd());
+  if (r) $('exSel').onclick = () => exportAudio(r[0], r[1], ' (selectie)');
 }
 
 function encodeWav(buf, bits) {
@@ -847,6 +993,31 @@ function encodeWav(buf, bits) {
 }
 
 /* ---------- uitlijnen ---------- */
+/**
+ * Meet het niveau (RMS, dBFS) van clip c over [t0,t1] op de tijdlijn, inclusief bronmateriaal
+ * buiten de clip (zo meet je bij een crossfade A en B over hetzelfde stuk muziek), zonder clipgain.
+ */
+function levelOf(c, t0, t1) {
+  const take = takeOf(c.takeId), d = take.data, sr = take.buffer.sampleRate, n = d[0].length;
+  const a = Math.max(0, Math.round((t0 - c.start + c.offset) * sr)), b = Math.min(n, Math.round((t1 - c.start + c.offset) * sr));
+  if (b - a < sr * 0.05) return null;
+  let sum = 0, cnt = 0;
+  for (let k = a; k < b; k++) { let v = 0; for (const ch of d) v += ch[k]; v /= d.length; sum += v * v; cnt++; }
+  const rms = Math.sqrt(sum / cnt);
+  return rms > 1e-6 ? 20 * Math.log10(rms) : null;
+}
+
+/** Zet de gain van B zo dat B rond de crossfade even luid is als A. */
+function matchLevel(j, win = 1.5) {
+  const c = (j.s + j.e) / 2;
+  const la = levelOf(j.a, c - win, c + win), lb = levelOf(j.b, c - win, c + win);
+  if (la == null || lb == null) { toast('Te weinig geluid rond de overgang om te meten'); return; }
+  const target = clamp((j.a.gain || 0) + (la - lb), -24, 24);
+  const delta = target - (j.b.gain || 0);
+  mutate(() => { j.b.gain = Math.round(target * 10) / 10; });
+  toast(`Gemeten rond de knip: A ${la.toFixed(1)} dB, B ${lb.toFixed(1)} dB → gain van B ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} dB (nu ${j.b.gain > 0 ? '+' : ''}${j.b.gain.toFixed(1)} dB)`);
+}
+
 /** Verschuif de inhoud van B (slip) zodat de golfvormen in de crossfade zo goed mogelijk in fase lopen. */
 function phaseAlign(j) {
   const a = j.a, b = j.b, ta = takeOf(a.takeId), tb = takeOf(b.takeId);
@@ -922,7 +1093,7 @@ function autoSync(take, ref) {
     for (let i = i0; i < i1; i++) { s += eb[i] * ea[i + L]; n++; }
     if (n > rate && s > bestScore) { bestScore = s; best = L; }
   }
-  mutate(() => { take.sync = Math.max(0, ref.sync + best / rate); });
+  mutate(() => { setTakeSync(take, ref.sync + best / rate); });
   toast(`"${take.name}" uitgelijnd op "${ref.name}": sync ${ms(take.sync)} ms`);
 }
 
@@ -1104,6 +1275,27 @@ function drawBase() {
     g.fillText('Hier verschijnen je takes', 16, RULER + EDIT_H + TAKE_H / 2);
   }
 
+  // markers
+  const sorted = [...S.markers].sort((a, b) => a.t - b.t);
+  sorted.forEach((mk, i) => {
+    const x = Math.round(px(mk.t)) + 0.5;
+    if (x < -200 || x > W + 10) return;
+    const sel = S.sel && S.sel.kind === 'marker' && S.sel.id === mk.id;
+    const col = sel ? '#ffffff' : '#1dd1a1';
+    g.strokeStyle = sel ? 'rgba(255,255,255,0.7)' : 'rgba(29,209,161,0.55)'; g.lineWidth = 1;
+    g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x, RULER); g.lineTo(x, RULER + EDIT_H); g.stroke(); g.setLineDash([]);
+    const label = `${i + 1}${mk.text ? ' ' + mk.text : ''}`;
+    g.font = '10px system-ui, sans-serif';
+    const next = sorted[i + 1];
+    const room = next ? Math.max(14, px(next.t) - x - 4) : 220;
+    let txt = label;
+    while (txt.length > 1 && g.measureText(txt).width + 8 > room) txt = txt.slice(0, -2) + '…';
+    const w = g.measureText(txt).width + 8;
+    g.fillStyle = col; g.fillRect(x, 1, w, 13);
+    g.fillStyle = '#0f1115'; g.textBaseline = 'middle'; g.fillText(txt, x + 4, 8);
+    g.fillStyle = col; g.fillRect(x - 0.5, 1, 1.5, RULER - 1);
+  });
+
   // selectie in de edit (liniaal of Shift+slepen)
   if (S.sel && S.sel.kind === 'erange') {
     const a = px(Math.min(S.sel.t0, S.sel.t1)), b = px(Math.max(S.sel.t0, S.sel.t1));
@@ -1143,12 +1335,13 @@ function frame() {
     if (t >= p.to) {
       if (p.loop) { play(p.loop[0], p.loop[1], p.loop); t = p.loop[0]; }
       else {
-        stop(); t = p.mode === 'edit' ? p.to : S.playhead;
-        if (p.then) { p.then(); requestAnimationFrame(frame); return; }
+        stop(); t = S.returnToStart && p.start != null ? p.start : p.mode === 'edit' ? p.to : S.playhead;
+        if (p.then) { p.then(); if (S.playing) S.playing.start = p.start; requestAnimationFrame(frame); return; }
         if (S.sel && S.sel.kind === 'junction') renderInspector();
       }
     }
     S.playhead = t;
+    if (S.sel && S.sel.kind === 'align') drawAlign();
     // volgen
     const x = px(t);
     if (!S.drag && (x > cssW - 30 || x < 0)) { S.view = Math.max(0, t - 30 / S.pps); S.dirty = true; updateScroll(); }
@@ -1293,6 +1486,10 @@ $('heads').addEventListener('click', (e) => {
 });
 
 function select(sel) {
+  if (sel && sel.kind === 'export') {
+    const o = S.sel;
+    S.lastRange = o && o.kind === 'erange' ? [Math.min(o.t0, o.t1), Math.max(o.t0, o.t1)] : null;
+  }
   S.sel = sel;
   if (!(sel && sel.kind === 'take' && S.range && S.range.takeId === sel.id)) S.range = null;
   S.xfView = null;
@@ -1313,24 +1510,35 @@ function updateButtons() {
 function renderInspector() {
   const el = $('inspector');
   const s = S.sel;
+  document.body.classList.toggle('aligning', !!(s && s.kind === 'align'));
   if (s && s.kind === 'junction') {
     const j = junctionOf(s.a, s.b);
     if (j) return inspectJunction(el, j);
   }
   if (s && s.kind === 'clip') { const c = clipOf(s.id); if (c) return inspectClip(el, c); }
   if (s && s.kind === 'take') { const t = takeOf(s.id); if (t) return inspectTake(el, t); }
+  if (s && s.kind === 'projects') { inspectProjects(el); return; }
+  if (s && s.kind === 'export') return inspectExport(el);
+  if (s && s.kind === 'marker') { const mk = S.markers.find((m) => m.id === s.id); if (mk) return inspectMarker(el, mk); }
+  if (s && s.kind === 'align') return inspectAlign(el, s);
   if (s && s.kind === 'erange') {
     const a = Math.min(s.t0, s.t1), b = Math.max(s.t0, s.t1);
     el.innerHTML = `
       <div class="insp-head"><h2>Selectie in de edit</h2><span>${fmt(a)} – ${fmt(b)} · ${fmt(b - a, 2)}</span></div>
       <div class="row">
-        <button id="erDel" class="primary">Weghalen <kbd>Delete</kbd></button>
+        <button id="erDel" class="primary" title="Alles erna schuift aan; de naad krijgt een crossfade">Weghalen en aanschuiven <kbd>Delete</kbd></button>
+        <button id="erGap" title="Het stuk wordt stilte; alles erna blijft op zijn plek">Weghalen, gat laten <kbd>⌥</kbd>+<kbd>Delete</kbd></button>
+      </div>
+      <div class="row">
         <button id="erPlay">▶ Beluister selectie</button>
         <button id="erPreview">▶ Beluister zonder dit stuk</button>
-        <span class="hint">Weghalen knipt dit stuk eruit; alles erna schuift aan en de naad krijgt een crossfade van ${ms(S.defXf)} ms. Ongedaan maken met ⌘Z.</span>
+        <button id="erLoop" title="Speelt de selectie steeds opnieuw; bewerken tijdens het herhalen kan gewoon (L)">${S.playing && S.playing.loop ? '■ Stop herhalen' : '🔁 Herhaal selectie'} <kbd>L</kbd></button>
+        <span class="hint"><b>Aanschuiven</b>: de edit wordt korter en de naad krijgt een crossfade van ${ms(S.defXf)} ms. <b>Gat laten</b>: er komt stilte voor in de plaats, met korte fades aan de randen. Ongedaan maken met ⌘Z.</span>
       </div>`;
-    $('erDel').onclick = () => deleteRange(a, b);
+    $('erDel').onclick = () => deleteRange(a, b, true);
+    $('erGap').onclick = () => deleteRange(a, b, false);
     $('erPlay').onclick = () => play(a, b);
+    $('erLoop').onclick = toggleLoop;
     $('erPreview').onclick = () => {
       // speel 2 s voor de selectie, en ga dan verder vanaf het eind (zoals het na weghalen zou klinken, zonder crossfade)
       play(Math.max(0, a - S.preroll), a);
@@ -1361,6 +1569,7 @@ function renderInspector() {
       <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
       <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
+      <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen ga je verder waar je was; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
     </ol>
     <div class="keys">
       <span><kbd>Spatie</kbd> afspelen / stoppen</span>
@@ -1377,6 +1586,10 @@ function renderInspector() {
       <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
       <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
       <span>Clipranden slepen: trimmen</span>
+      <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
+      <span><kbd>M</kbd> marker zetten · <kbd>,</kbd> <kbd>.</kbd> vorige/volgende marker</span>
+      <span><kbd>L</kbd> geselecteerd stuk of crossfade herhalen</span>
+      <span><b>Uitlijnen</b> (werkbalk): twee takes tot op de sample t.o.v. elkaar verschuiven</span>
       <span>Klik op stilte in de edit + <kbd>Delete</kbd>: gat dichten, alles erna schuift op</span>
       <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
       <span>Crossfade slepen: knip verschuiven</span>
@@ -1396,6 +1609,8 @@ function inspectJunction(el, j) {
       <label>Lengte <input type="range" id="xfLenR" min="0" max="2000" step="1" value="${Math.min(2000, ms(j.len))}" style="width:180px"><input type="number" id="xfLen" min="0" max="20000" step="1" value="${ms(j.len)}"> ms</label>
       <span class="group">Knip <button data-roll="-10">−10</button><button data-roll="-1">−1</button><button data-roll="1">+1</button><button data-roll="10">+10</button> ms</span>
       <button id="xfAlign" title="Verschuift de inhoud van B een paar ms zodat de golfvormen in fase lopen — voorkomt holle of kamfilter-achtige overgangen">Fase uitlijnen</button>
+      <button id="xfDetail" title="Beide kanten groot onder en over elkaar, met zoom tot op de sample">Uitlijnen in detail…</button>
+      <button id="xfLevel" title="Meet het niveau van A en B over 3 s rond de knip en past de gain van clip B aan, zodat er geen volumesprong is">Volume gelijk maken</button>
     </div>
     <div class="row">
       <button id="xfPlay" class="primary">${S.playing && S.playing.loop ? '■ Stop' : '▶ Beluister'} <kbd>A</kbd></button>
@@ -1421,9 +1636,11 @@ function inspectJunction(el, j) {
   };
   el.querySelectorAll('[data-roll]').forEach((b) => { b.onclick = () => mutate(() => roll(j.a, j.b, +b.dataset.roll / 1000)); });
   $('xfAlign').onclick = () => phaseAlign(j);
+  $('xfDetail').onclick = openAlign;
+  $('xfLevel').onclick = () => matchLevel(j);
   $('xfPlay').onclick = () => { if (S.playing) { stop(); renderInspector(); } else { auditionJunction(); renderInspector(); } };
   $('xfLoop').onchange = (e) => { S.loopAudition = e.target.checked; };
-  $('preroll').onchange = (e) => { S.preroll = clamp(+e.target.value || 2, 0.2, 20); };
+  $('preroll').onchange = (e) => { S.preroll = clamp(+e.target.value || 2, 0.2, 20); saveSettings(); };
   bindXfCanvas(j);
   requestAnimationFrame(drawXf);
 }
@@ -1475,6 +1692,7 @@ function inspectClip(el, c) {
     <div class="row">
       <button id="clSplit">Knip op afspeelkop <kbd>S</kbd></button>
       <button id="clGap" title="Schuift deze clip en alles erna naar links, tot tegen de vorige clip of 0:00">Gat ervoor dichten</button>
+      ${junctions().some((j) => j.b === c) ? '<button id="clLevel" title="Past de gain van deze clip aan zodat hij rond de overgang even luid is als de clip ervoor">Volume gelijk aan vorige clip</button>' : ''}
       <button id="clPlay">▶ Speel vanaf clip</button>
       <button id="clDel" class="danger">Verwijder clip</button>
       <span class="hint">Wissel van take om dit stuk door dezelfde plek uit een andere take te vervangen (met crossfades). Alt+slepen verschuift de inhoud binnen de clip.</span>
@@ -1491,8 +1709,9 @@ function inspectClip(el, c) {
   $('clFo').onchange = (e) => mutate(() => { c.fadeOut = Math.max(0, +e.target.value || 0) / 1000; });
   $('clSplit').onclick = () => splitAt(S.playhead);
   $('clGap').onclick = () => closeGapBefore(c);
+  if ($('clLevel')) $('clLevel').onclick = () => matchLevel(junctions().find((j) => j.b === c));
   $('clPlay').onclick = () => play(c.start);
-  $('clDel').onclick = deleteSelection;
+  $('clDel').onclick = () => deleteSelection();
 }
 
 function inspectTake(el, t) {
@@ -1512,6 +1731,7 @@ function inspectTake(el, t) {
       ${others.length ? `<span class="group">Auto-sync op <select id="tkRef">${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><button id="tkAuto">Uitlijnen</button></span>` : ''}
     </div>
     <div class="row">
+      <button id="tkAlignWin" title="Deze take en een andere onder en over elkaar, met zoom tot op de sample">Uitlijnvenster…</button>
       <button id="tkWhole">Hele take in edit</button>
       <button id="tkSolo">▶ Solo vanaf afspeelkop</button>
       <button id="tkDel" class="danger">Verwijder take</button>
@@ -1521,10 +1741,11 @@ function inspectTake(el, t) {
     $('tkComp').onclick = compRange;
     $('tkPlayR').onclick = () => playRange(t, ra, rb);
   }
-  $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); };
-  $('tkSync').onchange = (e) => mutate(() => { t.sync = Math.max(0, (+e.target.value || 0) / 1000); });
+  $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); scheduleSave(); };
+  $('tkSync').onchange = (e) => mutate(() => { setTakeSync(t, (+e.target.value || 0) / 1000); });
   if (others.length) $('tkAuto').onclick = () => { busy(true, 'Uitlijnen…'); setTimeout(() => { try { autoSync(t, takeOf(+$('tkRef').value)); } finally { busy(false); } }, 30); };
   $('tkWhole').onclick = () => replaceRange(t, t.sync, t.sync + t.buffer.duration);
+  $('tkAlignWin').onclick = openAlign;
   $('tkSolo').onclick = () => playTake(t, S.playhead);
   $('tkDel').onclick = () => removeTake(t);
 }
@@ -1534,6 +1755,398 @@ function compRange() {
   const t = takeOf(r.takeId); if (!t) return;
   replaceRange(t, Math.min(r.t0, r.t1), Math.max(r.t0, r.t1));
   S.range = null; S.dirty = true; updateButtons();
+}
+
+/* ---------- markers + herhalen ---------- */
+const sortedMarkers = () => [...S.markers].sort((a, b) => a.t - b.t);
+function ensureVisible(t) {
+  if (px(t) < 0 || px(t) > cssW - 20) { S.view = Math.max(0, t - (cssW / S.pps) * 0.2); updateScroll(); }
+  S.dirty = true;
+}
+/** Marker op de afspeelkop. Tijdens het afspelen loopt het afspelen gewoon door. */
+function addMarker(t = S.playhead) {
+  if (S.markers.some((m) => Math.abs(m.t - t) < 0.05)) { toast('Hier staat al een marker'); return; }
+  pushUndo();
+  const mk = { id: newId(), t: Math.max(0, t), text: '' };
+  S.markers.push(mk);
+  const nr = sortedMarkers().indexOf(mk) + 1;
+  S.dirty = true; updateButtons(); scheduleSave();
+  if (S.playing) toast(`Marker ${nr} op ${fmt(mk.t, 1)} — geef hem later een notitie`);
+  else select({ kind: 'marker', id: mk.id });
+}
+function jumpMarker(dir) {
+  const list = sortedMarkers();
+  if (!list.length) { toast('Nog geen markers. Druk M om er een te zetten.'); return; }
+  const tol = S.playing ? 0.4 : 0.01;
+  const mk = dir > 0 ? list.find((m) => m.t > S.playhead + 0.01) : [...list].reverse().find((m) => m.t < S.playhead - tol);
+  if (!mk) { toast(dir > 0 ? 'Geen marker meer verderop' : 'Geen marker meer hiervoor'); return; }
+  S.playhead = mk.t; ensureVisible(mk.t);
+  if (S.playing) restartAtPlayhead(); else select({ kind: 'marker', id: mk.id });
+}
+function toggleLoop() {
+  if (S.playing && S.playing.loop) { stop(); renderInspector(); return; }
+  const s = S.sel;
+  let a, b;
+  if (s && s.kind === 'erange') { a = Math.min(s.t0, s.t1); b = Math.max(s.t0, s.t1); }
+  else if (s && s.kind === 'junction') { const j = junctionOf(s.a, s.b); if (j) { a = Math.max(0, j.s - S.preroll); b = j.e + S.preroll; } }
+  if (a == null) { toast('Sleep eerst in de tijdbalk over een stuk (of klik een crossfade aan) om dat te herhalen'); return; }
+  play(a, b, [a, b]);
+  renderInspector();
+}
+function inspectMarker(el, mk) {
+  const list = sortedMarkers(), nr = list.indexOf(mk) + 1;
+  el.innerHTML = `
+    <div class="insp-head"><h2>Marker ${nr}</h2><span>${fmt(mk.t)}</span></div>
+    <div class="row">
+      <label>Notitie <input type="text" id="mkText" value="${esc(mk.text)}" placeholder="bijv. take 2 beter vanaf hier" style="width:320px"></label>
+      <button id="mkPlay">▶ Speel vanaf hier</button>
+      <button id="mkDel" class="danger">Verwijder <kbd>Delete</kbd></button>
+    </div>
+    <div class="plist">${list.map((m, i) => `
+      <div class="pitem${m.id === mk.id ? ' cur' : ''}">
+        <span class="pname">${i + 1}. ${fmt(m.t, 1)}</span>
+        <span class="pmeta">${m.text ? esc(m.text) : '—'}</span>
+        <button data-mk="${m.id}">Ga naar</button>
+      </div>`).join('')}</div>
+    <p class="hint"><kbd>M</kbd> zet een marker op de afspeelkop, ook tijdens het afspelen · <kbd>,</kbd> en <kbd>.</kbd> springen naar de vorige/volgende marker · sleep een marker in de tijdbalk om hem te verplaatsen.</p>`;
+  $('mkText').onchange = (e) => { pushUndo(); mk.text = e.target.value.trim(); S.dirty = true; scheduleSave(); renderInspector(); };
+  $('mkText').onkeydown = (e) => { if (e.key === 'Enter') e.target.blur(); };
+  $('mkPlay').onclick = () => { S.playhead = mk.t; play(mk.t); };
+  $('mkDel').onclick = () => deleteSelection();
+  el.querySelectorAll('[data-mk]').forEach((b) => {
+    b.onclick = () => { const m = S.markers.find((x) => x.id === +b.dataset.mk); S.playhead = m.t; ensureVisible(m.t); select({ kind: 'marker', id: m.id }); if (S.playing) restartAtPlayhead(); };
+  });
+}
+
+/* ---------- uitlijnvenster ----------
+   Twee bronnen (twee takes, of de twee clips van een crossfade) onder elkaar en over elkaar,
+   met een eigen zoom tot op sample-niveau. B verschuift: bij takes de sync (clips in de edit
+   schuiven mee), bij een crossfade de inhoud van clip B (slip). */
+
+/** Verschuif de sync van een take; clips uit die take in de edit houden dezelfde muziek op dezelfde plek. */
+function setTakeSync(t, ns) {
+  const dt = ns - t.sync;
+  t.sync = ns;
+  if (!S.syncClips || !dt) return;
+  const len = t.buffer.duration;
+  for (const c of S.clips) if (c.takeId === t.id) c.offset = clamp(c.offset - dt, 0, Math.max(0, len - c.dur));
+}
+
+function alignSrc(s, which) {
+  const id = s[which];
+  if (s.mode === 'takes') { const t = takeOf(id); return t ? { take: t, base: t.sync } : null; }
+  const c = clipOf(id); if (!c) return null;
+  return { take: takeOf(c.takeId), base: c.start - c.offset, clip: c };
+}
+
+function sampleAt(take, st) {
+  const sr = take.buffer.sampleRate, x = st * sr, i = Math.floor(x), f = x - i, d = take.data;
+  if (i < 0 || i + 1 >= d[0].length) return 0;
+  let a = 0, b = 0;
+  for (const ch of d) { a += ch[i]; b += ch[i + 1]; }
+  return (a + (b - a) * f) / d.length;
+}
+
+function openAlign() {
+  const s = S.sel, W = Math.max(300, cssW);
+  let al = null;
+  if (s && s.kind === 'junction') {
+    const j = junctionOf(s.a, s.b);
+    if (j) { const c = (j.s + j.e) / 2, span = Math.max(0.05, (j.e - j.s) * 1.5); al = { mode: 'clips', a: j.a.id, b: j.b.id, t0: c - span / 2, spx: span / W }; }
+  }
+  if (!al) {
+    if (S.takes.length < 2) { toast('Voor uitlijnen zijn minstens twee takes nodig'); return; }
+    // B = de geselecteerde take (die verschuift); A = de take die in de edit onder de afspeelkop klinkt.
+    const under = S.clips.find((c) => c.start <= S.playhead && end(c) > S.playhead);
+    const b = s && s.kind === 'take' ? s.id : S.takes[S.takes.length - 1].id;
+    const a = under && under.takeId !== b ? under.takeId : S.takes.find((t) => t.id !== b).id;
+    al = { mode: 'takes', a, b, t0: S.playhead - 0.1, spx: 0.2 / W };
+  }
+  select({ kind: 'align', gain: 1, ...al });
+}
+
+function alignOffset(s) {
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b');
+  return A && B ? B.base - A.base : 0;
+}
+function updateAlignInfo() {
+  const el = $('alOff'), s = S.sel;
+  if (!el || !s || s.kind !== 'align') return;
+  const d = alignOffset(s), sr = alignSrc(s, 'a').take.buffer.sampleRate;
+  el.textContent = s.mode === 'takes'
+    ? `B staat ${d >= 0 ? '+' : '−'}${Math.abs(d * 1000).toFixed(3)} ms (${Math.round(Math.abs(d) * sr)} samples) ${d >= 0 ? 'later' : 'eerder'} dan A`
+    : `Inhoud van B verschoven: ${d >= 0 ? '+' : '−'}${Math.abs(d * 1000).toFixed(3)} ms t.o.v. A`;
+}
+
+function nudgeAlign(dt) {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  const B = alignSrc(s, 'b'); if (!B) return;
+  mutate(() => {
+    if (s.mode === 'takes') setTakeSync(B.take, B.take.sync + dt);
+    else B.clip.offset = clamp(B.clip.offset - dt, 0, Math.max(0, B.take.buffer.duration - B.clip.dur));
+  });
+}
+
+/** Zoek binnen het beeld de verschuiving van B (max ±20 ms) waarbij de golfvormen het best overlappen. */
+function alignFine() {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b'), sr = A.take.buffer.sampleRate;
+  const W = $('alCanvas') ? $('alCanvas').clientWidth : cssW;
+  const c = s.t0 + (W * s.spx) / 2, half = clamp((W * s.spx) / 2, 0.01, 0.25);
+  const w0 = c - half, N = Math.round(2 * half * sr);
+  const maxLag = Math.round(clamp(half, 0.002, 0.02) * sr);
+  const a = new Float32Array(N), b = new Float32Array(N + 2 * maxLag);
+  for (let k = 0; k < N; k++) a[k] = sampleAt(A.take, w0 + k / sr - A.base);
+  for (let k = 0; k < b.length; k++) b[k] = sampleAt(B.take, w0 + (k - maxLag) / sr - B.base);
+  let ea = 0; for (let k = 0; k < N; k++) ea += a[k] * a[k];
+  if (ea < 1e-9) { toast('Te stil in beeld om uit te lijnen'); return; }
+  let best = 0, bestScore = -Infinity;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let dot = 0, eb = 0;
+    const o = lag + maxLag;
+    for (let k = 0; k < N; k++) { const y = b[k + o]; dot += a[k] * y; eb += y * y; }
+    const sc = eb > 1e-12 ? dot / Math.sqrt(ea * eb) : -Infinity;
+    if (sc > bestScore) { bestScore = sc; best = lag; }
+  }
+  nudgeAlign(-best / sr);
+  toast(`B ${best > 0 ? 'eerder' : best < 0 ? 'later' : 'niet'} gezet${best ? ': ' + (Math.abs(best) / sr * 1000).toFixed(3) + ' ms' : ''} · overeenkomst ${(bestScore * 100).toFixed(0)}%`);
+}
+
+function playAlign(which) {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  stopSources();
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  const list = (which === 'ab' ? ['a', 'b'] : [which]).map((w) => alignSrc(s, w)).filter(Boolean);
+  const from = Math.max(Math.min(...list.map((x) => x.base)), s.t0 - 0.5);
+  const to = Math.max(...list.map((x) => x.base + x.take.buffer.duration));
+  const when = ac.currentTime + 0.06, srcs = [];
+  for (const x of list) {
+    const src = ac.createBufferSource(); src.buffer = x.take.buffer;
+    const gn = ac.createGain(); gn.gain.value = which === 'ab' ? 0.6 : 1;
+    src.connect(gn); gn.connect(S.master);
+    src.start(when + Math.max(0, x.base - from), Math.max(0, from - x.base));
+    srcs.push(src);
+  }
+  S.playing = { mode: 'align', srcs, from, to, when, loop: null, start: S.playhead };
+  S.playhead = from;
+  updatePlayBtn();
+}
+
+const AL = { RULER: 18, ROW: 88, OVER: 128 };
+function alignRows() {
+  const a = AL.RULER + 4, b = a + AL.ROW + 6, o = b + AL.ROW + 6;
+  return { a, b, o, h: o + AL.OVER + 4 };
+}
+
+function drawAlignTrack(g, src, y, h, W, s, color, alpha) {
+  const mid = y + h / 2, half = h / 2 - 4, take = src.take, sr = take.buffer.sampleRate, sppS = s.spx * sr, dur = take.buffer.duration;
+  g.globalAlpha = alpha;
+  if (sppS < 5) {
+    g.strokeStyle = color; g.lineWidth = 1.6; g.beginPath();
+    let on = false;
+    for (let x = 0; x <= W; x++) {
+      const st = s.t0 + x * s.spx - src.base;
+      if (st < 0 || st > dur) { on = false; continue; }
+      const yy = mid - clamp(sampleAt(take, st) * s.gain, -1, 1) * half;
+      if (on) g.lineTo(x, yy); else { g.moveTo(x, yy); on = true; }
+    }
+    g.stroke();
+    if (sppS < 0.25) {                       // ver ingezoomd: elk sample als puntje
+      g.fillStyle = color;
+      const k0 = Math.ceil((s.t0 - src.base) * sr), k1 = Math.floor((s.t0 + W * s.spx - src.base) * sr);
+      for (let k = Math.max(0, k0); k <= k1 && k < take.data[0].length; k++) {
+        let v = 0; for (const ch of take.data) v += ch[k]; v /= take.data.length;
+        const x = (k / sr + src.base - s.t0) / s.spx;
+        g.fillRect(x - 1.5, mid - clamp(v * s.gain, -1, 1) * half - 1.5, 3, 3);
+      }
+    }
+  } else if (sppS < PEAK_BLOCK) {
+    // echte min/max per pixel (zonder de nullijn mee te nemen), zodat de golfvorm niet blokkerig wordt
+    g.fillStyle = color;
+    const d = take.data, n = d[0].length, nc = d.length;
+    for (let x = 0; x < W; x++) {
+      const a = Math.max(0, Math.floor((s.t0 + x * s.spx - src.base) * sr));
+      const b = Math.min(n, Math.ceil((s.t0 + (x + 1) * s.spx - src.base) * sr) + 1);
+      if (b <= a) continue;
+      let lo = Infinity, hi = -Infinity;
+      for (let k = a; k < b; k++) { let v = 0; for (const ch of d) v += ch[k]; v /= nc; if (v < lo) lo = v; if (v > hi) hi = v; }
+      lo = clamp(lo * s.gain, -1, 1); hi = clamp(hi * s.gain, -1, 1);
+      g.fillRect(x, mid - hi * half, 1, Math.max(1, (hi - lo) * half));
+    }
+  } else {
+    g.fillStyle = color;
+    drawWave(g, take, src.base, 0, W, (x) => s.t0 + x * s.spx, s.spx, mid, half, () => s.gain);
+  }
+  g.globalAlpha = 1;
+}
+
+function drawAlign() {
+  const c = $('alCanvas'), s = S.sel;
+  if (!c || !s || s.kind !== 'align') return;
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b');
+  if (!A || !B) return;
+  const W = c.clientWidth, R = alignRows(), H = R.h;
+  if (c.style.height !== H + 'px') c.style.height = H + 'px';
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const xOf = (t) => (t - s.t0) / s.spx;
+  // liniaal
+  const raw = 90 * s.spx, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map((m) => m * p10).find((v) => v >= raw);
+  const dec = clamp(Math.ceil(-Math.log10(step)), 0, 6);
+  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  for (let t = Math.ceil(s.t0 / step) * step; t < s.t0 + W * s.spx; t += step) {
+    const x = Math.round(xOf(t)) + 0.5;
+    g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(x, AL.RULER, 1, H - AL.RULER);
+    g.fillStyle = '#8b93a1'; g.fillText(fmt(t, Math.max(3, dec)), x + 3, 3);
+  }
+  const rows = [[R.a, AL.ROW, 'A · ' + A.take.name, A], [R.b, AL.ROW, 'B · ' + B.take.name, B], [R.o, AL.OVER, 'A + B over elkaar', null]];
+  for (const [y, h, label, src] of rows) {
+    g.fillStyle = '#14171c'; g.fillRect(0, y, W, h);
+    g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, y + h / 2, W, 1);
+    if (src && src.clip) {                                   // buiten de clip: gedimd
+      g.fillStyle = 'rgba(255,255,255,0.05)';
+      const x0 = clamp(xOf(src.clip.start), 0, W), x1 = clamp(xOf(end(src.clip)), 0, W);
+      g.fillRect(x0, y, x1 - x0, h);
+    }
+    if (src) drawAlignTrack(g, src, y, h, W, s, src.take.color, 1);
+    else {
+      drawAlignTrack(g, A, y, h, W, s, A.take.color, 0.75);
+      drawAlignTrack(g, B, y, h, W, s, B.take.color === A.take.color ? '#ffffff' : B.take.color, 0.75);
+    }
+    g.fillStyle = '#c9ced8'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'top';
+    g.fillText(label, 6, y + 4);
+  }
+  if (s.mode === 'clips') {
+    const j = junctionOf(s.a, s.b);
+    if (j) { g.fillStyle = 'rgba(255,211,42,0.7)'; g.fillRect(Math.round(xOf(j.s)), AL.RULER, 1, H); g.fillRect(Math.round(xOf(j.e)), AL.RULER, 1, H); }
+  }
+  const ph = xOf(S.playhead);
+  if (ph >= 0 && ph <= W) { g.fillStyle = '#ff5c6c'; g.fillRect(Math.round(ph), 0, 1.5, H); }
+  const sr = A.take.buffer.sampleRate;
+  g.fillStyle = '#8b93a1'; g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = '10px system-ui, sans-serif';
+  const span = W * s.spx;
+  g.fillText(`beeld ${span < 1 ? (span * 1000).toFixed(span < 0.01 ? 2 : 0) + ' ms' : span.toFixed(2) + ' s'} · ${(1 / (s.spx * sr)).toFixed(s.spx * sr < 1 ? 1 : 3)} px per sample`, W - 6, H - 4);
+  g.textAlign = 'left';
+}
+
+function zoomAlign(x, f) {
+  const s = S.sel; if (!s || s.kind !== 'align') return;
+  const A = alignSrc(s, 'a'); if (!A) return;
+  const W = $('alCanvas').clientWidth, sr = A.take.buffer.sampleRate;
+  const t = s.t0 + x * s.spx;
+  s.spx = clamp(s.spx / f, 1 / (sr * 40), Math.max(1, contentEnd()) / W);
+  s.t0 = t - x * s.spx;
+  drawAlign();
+}
+
+function bindAlignCanvas() {
+  const c = $('alCanvas');
+  let drag = null;
+  const rowAt = (y) => { const R = alignRows(); return y < R.b - 3 ? 'a' : 'b'; };
+  c.addEventListener('pointerdown', (e) => {
+    const s = S.sel; if (!s || s.kind !== 'align') return;
+    const r = c.getBoundingClientRect(), y = e.clientY - r.top;
+    const B = alignSrc(s, 'b'); if (!B) return;
+    c.setPointerCapture(e.pointerId);
+    drag = { kind: rowAt(y) === 'a' ? 'pan' : 'shift', x0: e.clientX, t00: s.t0, moved: false, xr: e.clientX - r.left,
+      orig: s.mode === 'takes' ? B.take.sync : B.clip.offset };
+  });
+  c.addEventListener('pointermove', (e) => {
+    const s = S.sel;
+    if (!drag) { const r = c.getBoundingClientRect(); c.style.cursor = rowAt(e.clientY - r.top) === 'a' ? 'grab' : 'ew-resize'; return; }
+    const dx = e.clientX - drag.x0;
+    if (!drag.moved && Math.abs(dx) < 2) return;
+    if (!drag.moved) { drag.moved = true; if (drag.kind === 'shift') pushUndo(); }
+    if (drag.kind === 'pan') s.t0 = drag.t00 - dx * s.spx;
+    else {
+      const B = alignSrc(s, 'b'), dt = dx * s.spx;
+      if (s.mode === 'takes') B.take.sync = drag.orig + dt;
+      else B.clip.offset = clamp(drag.orig - dt, 0, Math.max(0, B.take.buffer.duration - B.clip.dur));
+      S.dirty = true; updateAlignInfo();
+    }
+    drawAlign();
+  });
+  const up = () => {
+    const d = drag; drag = null; if (!d) return;
+    const s = S.sel; if (!s || s.kind !== 'align') return;
+    if (d.kind === 'shift' && d.moved) {
+      if (s.mode === 'takes') { const t = alignSrc(s, 'b').take, ns = t.sync; t.sync = d.orig; setTakeSync(t, ns); }
+      afterEdit();
+    } else if (!d.moved) { S.playhead = s.t0 + d.xr * s.spx; drawAlign(); }
+  };
+  c.addEventListener('pointerup', up);
+  c.addEventListener('pointercancel', up);
+  c.addEventListener('wheel', (e) => {
+    const s = S.sel; if (!s || s.kind !== 'align') return;
+    const r = c.getBoundingClientRect(), x = e.clientX - r.left;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAlign(x, Math.exp(-e.deltaY * 0.0025)); }
+    else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault(); s.t0 += (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * s.spx; drawAlign();
+    }
+  }, { passive: false });
+  let gs = 1;
+  c.addEventListener('gesturestart', (e) => { e.preventDefault(); gs = 1; });
+  c.addEventListener('gesturechange', (e) => { e.preventDefault(); const r = c.getBoundingClientRect(); zoomAlign(e.clientX - r.left, e.scale / gs); gs = e.scale; });
+  c.addEventListener('gestureend', (e) => e.preventDefault());
+}
+
+function inspectAlign(el, s) {
+  const A = alignSrc(s, 'a'), B = alignSrc(s, 'b');
+  const opts = (sel) => S.takes.map((t) => `<option value="${t.id}"${t.id === sel ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
+  el.innerHTML = `
+    <div class="insp-head"><h2>Uitlijnen</h2><span>${s.mode === 'takes'
+      ? 'Takes t.o.v. elkaar verschuiven'
+      : `Crossfade ${esc(A.take.name)} → ${esc(B.take.name)}: de inhoud van clip B verschuift (slip)`}</span></div>
+    ${s.mode === 'takes' ? `<div class="row">
+      <label>A (referentie) <select id="alA">${opts(s.a)}</select></label>
+      <label>B (verschuiven) <select id="alB">${opts(s.b)}</select></label>
+      <label title="Clips uit take B die al in de edit staan, houden dezelfde muziek op dezelfde plek"><input type="checkbox" id="alFollow"${S.syncClips ? ' checked' : ''}> Clips in de edit schuiven mee</label>
+    </div>` : ''}
+    <canvas id="alCanvas"></canvas>
+    <div class="row">
+      <span class="group">Zoom <button id="alZo">−</button><button id="alZi">+</button><button id="alZs" title="Zo ver inzoomen dat je losse samples ziet">Samples</button></span>
+      <label>Hoogte <select id="alGain">${[1, 2, 4, 8, 16, 32].map((v) => `<option value="${v}"${v === s.gain ? ' selected' : ''}>${v}×</option>`).join('')}</select></label>
+      <span class="group">B <button data-n="-0.01">−10 ms</button><button data-n="-0.001">−1 ms</button><button data-n="-1s">−1 sample</button><button data-n="1s">+1 sample</button><button data-n="0.001">+1 ms</button><button data-n="0.01">+10 ms</button></span>
+    </div>
+    <div class="row"><b id="alOff"></b></div>
+    <div class="row">
+      <button id="alFine" class="primary" title="Zoekt binnen wat je nu ziet (max ±20 ms) de beste overlap">Automatisch (in beeld)</button>
+      ${s.mode === 'takes' ? '<button id="alCoarse" title="Zoekt over de hele take (max ±10 s) waar de inzetten overeenkomen">Automatisch (hele take, grof)</button>' : ''}
+      <span class="group"><button id="alPA">▶ A</button><button id="alPB">▶ B</button><button id="alPAB" title="Beide tegelijk: hoe beter uitgelijnd, hoe voller en minder zwiepend het klinkt">▶ A + B samen</button></span>
+      <button id="alClose">Sluiten</button>
+    </div>
+    <p class="hint">Sleep in rij <b>B</b> of in de onderste rij om B te verschuiven. Sleep in rij <b>A</b> of veeg met twee vingers om door de tijd te schuiven; knijp (of ⌘ + twee vingers) om te zoomen. Pijltjes ←/→ verschuiven B 1 ms, met Shift 10 ms, met ⌥ 1 sample.${s.mode === 'clips' ? ' Lichte vlakken = het deel van de clip dat in de edit klinkt; gele lijnen = de crossfade.' : ''}</p>`;
+  if (s.mode === 'takes') {
+    const pick = (which, other) => (e) => {
+      s[which] = +e.target.value;
+      if (s[which] === s[other]) s[other] = S.takes.find((t) => t.id !== s[which]).id;
+      renderInspector();
+    };
+    $('alA').onchange = pick('a', 'b');
+    $('alB').onchange = pick('b', 'a');
+    $('alFollow').onchange = (e) => { S.syncClips = e.target.checked; saveSettings(); };
+    $('alCoarse').onclick = () => { busy(true, 'Uitlijnen…'); setTimeout(() => { try { autoSync(B.take, A.take); } finally { busy(false); } }, 30); };
+  }
+  const cvW = () => $('alCanvas').clientWidth;
+  $('alZo').onclick = () => zoomAlign(cvW() / 2, 1 / 2);
+  $('alZi').onclick = () => zoomAlign(cvW() / 2, 2);
+  $('alZs').onclick = () => zoomAlign(cvW() / 2, s.spx * A.take.buffer.sampleRate * 8);
+  $('alGain').onchange = (e) => { s.gain = +e.target.value; drawAlign(); };
+  const sr = A.take.buffer.sampleRate;
+  el.querySelectorAll('[data-n]').forEach((b) => {
+    b.onclick = () => { const v = b.dataset.n; nudgeAlign(v.endsWith('s') ? parseFloat(v) / sr : +v); };
+  });
+  $('alFine').onclick = alignFine;
+  $('alPA').onclick = () => playAlign('a');
+  $('alPB').onclick = () => playAlign('b');
+  $('alPAB').onclick = () => playAlign('ab');
+  $('alClose').onclick = () => select(null);
+  bindAlignCanvas();
+  updateAlignInfo();
+  requestAnimationFrame(drawAlign);
 }
 
 /* ---------- interactie tijdlijn ---------- */
@@ -1577,7 +2190,9 @@ cv.addEventListener('pointerdown', (e) => {
   cv.setPointerCapture(e.pointerId);
   const t = tAt(x), lane = laneAt(y);
   const d = { x0: x, moved: false, t0: t };
-  if (lane.kind === 'ruler' || (lane.kind === 'edit' && e.shiftKey)) { d.type = 'erange'; }  // slepen = selectie in de edit
+  const mHit = lane.kind === 'ruler' ? S.markers.find((m) => Math.abs(px(m.t) - x) < 7) : null;
+  if (mHit) { d.type = 'marker'; d.m = mHit; d.ot = mHit.t; select({ kind: 'marker', id: mHit.id }); }
+  else if (lane.kind === 'ruler' || (lane.kind === 'edit' && e.shiftKey)) { d.type = 'erange'; }  // slepen = selectie in de edit
   else if (lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
@@ -1607,12 +2222,15 @@ cv.addEventListener('pointermove', (e) => {
   if (!d.moved && Math.abs(dx) < 3) return;
   if (!d.moved) {
     d.moved = true;
-    if (['move', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync'].includes(d.type)) pushUndo();
+    if (['move', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type)) pushUndo();
   }
   const dt = dx / S.pps, sh = e.shiftKey;
   const c = d.c, o = d.o;
   switch (d.type) {
     case 'playhead': S.playhead = Math.max(0, tAt(x)); break;
+    case 'marker':
+      d.m.t = Math.max(0, snapT(d.ot + dt, null, sh));
+      break;
     case 'erange': {
       const t0 = Math.max(0, snapT(d.t0, null, false)), t1 = Math.max(0, snapT(tAt(x), null, false));
       if (!S.sel || S.sel.kind !== 'erange') { S.sel = { kind: 'erange', t0, t1 }; S.range = null; }
@@ -1663,7 +2281,7 @@ cv.addEventListener('pointermove', (e) => {
       break;
     }
     case 'sync': {
-      let ns = Math.max(0, d.os + dt);
+      let ns = d.os + dt;
       if (S.snap && !sh && Math.abs(ns) < 8 / S.pps) ns = 0;
       d.take.sync = ns;
       break;
@@ -1683,6 +2301,12 @@ function endDrag(e) {
       if (gapAt(d.t0)) select({ kind: 'gap', t: d.t0 });
       if (S.playing) restartAtPlayhead();
     }
+    S.dirty = true;
+    return;
+  }
+  if (d.type === 'marker') {
+    if (d.moved) afterEdit();
+    else { S.playhead = d.m.t; if (S.playing) restartAtPlayhead(); renderInspector(); }
     S.dirty = true;
     return;
   }
@@ -1706,6 +2330,7 @@ function endDrag(e) {
     if (S.playing) restartAtPlayhead();
   } else {
     if (d.type === 'move') resolveDrop(d.c, !!(e && (e.metaKey || e.ctrlKey)));
+    if (d.type === 'sync') { const ns = d.take.sync; d.take.sync = d.os; setTakeSync(d.take, ns); }
     afterEdit();
   }
   S.dirty = true;
@@ -1721,14 +2346,16 @@ cv.addEventListener('dblclick', (e) => {
 
 function restartAtPlayhead() {
   const p = S.playing; if (!p) return;
-  if (p.mode === 'take') playTake(takeOf(p.takeId), S.playhead);
+  if (p.mode === 'align') stop();
+  else if (p.mode === 'take') playTake(takeOf(p.takeId), S.playhead);
   else play(S.playhead);
 }
 
 function hoverCursor(x, y, alt) {
   const lane = laneAt(y);
   let cur = 'default';
-  if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
+  if (lane.kind === 'ruler' && S.markers.some((m) => Math.abs(px(m.t) - x) < 7)) cur = 'ew-resize';
+  else if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
   else if (lane.kind === 'edit') {
     const h = hitEdit(x);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
@@ -1791,15 +2418,22 @@ $('demoBtn').onclick = makeDemo;
 $('playBtn').onclick = togglePlay;
 $('splitBtn').onclick = () => splitAt(S.playhead);
 $('compBtn').onclick = compRange;
-$('deleteBtn').onclick = deleteSelection;
+$('alignBtn').onclick = openAlign;
+$('markBtn').onclick = () => addMarker();
+$('deleteBtn').onclick = () => deleteSelection();
 $('undoBtn').onclick = undo;
 $('redoBtn').onclick = redo;
 $('zoomIn').onclick = () => zoomAt(cssW / 2, 1.5);
 $('zoomOut').onclick = () => zoomAt(cssW / 2, 1 / 1.5);
 $('zoomFit').onclick = zoomFit;
-$('snapChk').onchange = (e) => { S.snap = e.target.checked; };
-$('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 1000; };
-$('exportBtn').onclick = exportWav;
+$('snapChk').onchange = (e) => { S.snap = e.target.checked; saveSettings(); };
+$('rtsChk').onchange = (e) => { S.returnToStart = e.target.checked; saveSettings(); };
+$('zcChk').onchange = (e) => { S.zeroCross = e.target.checked; saveSettings(); };
+$('projBtn').onclick = openProjects;
+$('projName').onclick = openProjects;
+$('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 1000; saveSettings(); };
+$('exportBtn').onclick = () => select({ kind: 'export' });
+$('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importProjectFile(f); };
 
 document.addEventListener('keydown', (e) => {
   const k = e.key, mod = e.ctrlKey || e.metaKey;
@@ -1820,17 +2454,24 @@ document.addEventListener('keydown', (e) => {
     case 's': case 'S': splitAt(S.playhead); break;
     case 'e': case 'E': compRange(); break;
     case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
-    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(e.altKey); break;
     case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
     case '-': case '_': zoomAt(cssW / 2, 1 / 1.5); break;
     case 'f': case 'F': zoomFit(); break;
+    case 'm': case 'M': addMarker(); break;
+    case ',': case '<': jumpMarker(-1); break;
+    case '.': case '>': jumpMarker(1); break;
+    case 'l': case 'L': toggleLoop(); break;
     case 'Home': S.playhead = 0; S.view = 0; S.dirty = true; updateScroll(); if (S.playing) restartAtPlayhead(); break;
     case 'End': S.playhead = editEnd(); break;
     case 'Escape': S.range = null; select(null); break;
     case 'ArrowLeft': case 'ArrowRight': {
       e.preventDefault();
       const dir = k === 'ArrowLeft' ? -1 : 1;
-      if (sj) mutate(() => roll(sj.a, sj.b, dir * (e.shiftKey ? 0.01 : 0.001)));
+      if (S.sel && S.sel.kind === 'align') {
+        const sr = S.ac ? S.ac.sampleRate : 48000;
+        nudgeAlign(dir * (e.altKey ? 1 / sr : e.shiftKey ? 0.01 : 0.001));
+      } else if (sj) mutate(() => roll(sj.a, sj.b, dir * (e.shiftKey ? 0.01 : 0.001)));
       else { S.playhead = Math.max(0, S.playhead + dir * (e.shiftKey ? 0.1 : 1)); if (S.playing) restartAtPlayhead(); }
       break;
     }
@@ -1889,6 +2530,291 @@ function makeDemo() {
   }, 30);
 }
 
+/* ---------- projecten bewaren ----------
+   Alles blijft op dit apparaat, in de opslag van de browser/app (IndexedDB):
+   - 'files':    de audio van elke take (het originele bestand), sleutel = fileKey
+   - 'projects': de edit (clips, sync, namen, zoom) per project
+   Er wordt automatisch bewaard, kort na elke wijziging. */
+const DBN = 'take-crossfader';
+let dbPromise = null;
+function idb() {
+  if (!dbPromise) {
+    dbPromise = new Promise((res, rej) => {
+      if (!window.indexedDB) { rej(new Error('Deze browser kan geen projecten bewaren')); return; }
+      const r = indexedDB.open(DBN, 1);
+      r.onupgradeneeded = () => { const db = r.result; db.createObjectStore('projects', { keyPath: 'id' }); db.createObjectStore('files'); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    dbPromise.catch(() => { dbPromise = null; });
+  }
+  return dbPromise;
+}
+function dbDo(store, mode, fn) {
+  return idb().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction(store, mode);
+    let out;
+    const r = fn(tx.objectStore(store));
+    if (r) r.onsuccess = () => { out = r.result; };
+    tx.oncomplete = () => res(out);
+    tx.onerror = tx.onabort = () => rej(tx.error || new Error('Opslaan mislukt'));
+  }));
+}
+const dbGet = (st, k) => dbDo(st, 'readonly', (o) => o.get(k));
+const dbPut = (st, v, k) => dbDo(st, 'readwrite', (o) => (k === undefined ? o.put(v) : o.put(v, k)));
+const dbDel = (st, k) => dbDo(st, 'readwrite', (o) => o.delete(k));
+const dbAll = (st) => dbDo(st, 'readonly', (o) => o.getAll());
+const dbKeys = (st) => dbDo(st, 'readonly', (o) => o.getAllKeys());
+
+const store = {
+  get(k) { try { return localStorage.getItem('tcf.' + k); } catch (_) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem('tcf.' + k) : localStorage.setItem('tcf.' + k, v); } catch (_) { /* geen opslag */ } },
+};
+
+function setSaveState(text) { $('saveState').textContent = text; }
+function updateProjectLine() {
+  $('projName').textContent = S.project ? S.project.name : 'Nog geen project';
+}
+function suggestName() {
+  const d = new Date();
+  const base = S.takes[0] ? S.takes[0].name.replace(/[ _-]*(take)?[ _-]*\d+$/i, '').trim() : '';
+  return (base || 'Project') + ' - ' + d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
+let saveTimer = null, saving = null;
+function scheduleSave() {
+  if (S.loading || !S.takes.length) return;
+  clearTimeout(saveTimer);
+  setSaveState('wijzigingen nog niet bewaard…');
+  saveTimer = setTimeout(saveProject, 1200);
+}
+async function saveProject() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (S.loading || !S.takes.length) return;
+  if (saving) { await saving; }
+  saving = (async () => {
+    try {
+      const first = !S.project;
+      if (first) {
+        S.project = { id: uid(), name: suggestName(), created: Date.now() };
+        updateProjectLine();
+        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      }
+      for (const t of S.takes) {
+        if (t.stored) continue;
+        setSaveState(`audio van "${t.name}" bewaren…`);
+        await dbPut('files', t.file || encodeWav(t.buffer, 32), t.fileKey);
+        t.stored = true; t.file = null;
+      }
+      const p = S.project;
+      await dbPut('projects', {
+        id: p.id, name: p.name, created: p.created, updated: Date.now(),
+        takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration })),
+        clips: S.clips.map((c) => ({ ...c })), markers: S.markers, nextId: S.nextId,
+        view: { pps: S.pps, view: S.view, playhead: S.playhead }, length: editEnd(),
+      });
+      store.set('last', p.id);
+      if (S.needCleanup) { S.needCleanup = false; await cleanupFiles(); }
+      setSaveState('bewaard om ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }));
+      if (first) toast(`Project "${p.name}" wordt vanaf nu automatisch bewaard`);
+    } catch (err) {
+      console.error(err);
+      setSaveState('NIET bewaard');
+      toast('Bewaren mislukt: ' + (err && err.name === 'QuotaExceededError' ? 'onvoldoende opslagruimte. Verwijder oude projecten.' : (err && err.message) || err));
+    }
+  })();
+  await saving; saving = null;
+}
+
+/** Verwijder audio die door geen enkel project meer wordt gebruikt. */
+async function cleanupFiles() {
+  const projects = await dbAll('projects');
+  const used = new Set(S.takes.map((t) => t.fileKey));
+  for (const p of projects) for (const t of p.takes) used.add(t.fileKey);
+  for (const k of await dbKeys('files')) if (!used.has(k)) await dbDel('files', k);
+}
+
+/* ---------- project als bestand ----------
+   Eén bestand (.crossfader) met de edit én de audio: als back-up of om op een andere computer verder te werken.
+   Opbouw: "TCFPROJ1" · uint32 lengte · JSON-kop · de audiobestanden achter elkaar. */
+const PROJ_MAGIC = 'TCFPROJ1';
+async function exportProjectFile() {
+  if (!S.takes.length) { toast('Er is nog geen project om te bewaren'); return; }
+  busy(true, 'Projectbestand maken…');
+  try {
+    await saveProject();
+    const rec = await dbGet('projects', S.project.id);
+    const files = [], blobs = [];
+    for (const t of rec.takes) {
+      const b = await dbGet('files', t.fileKey);
+      if (!b) throw new Error(`audio van "${t.name}" ontbreekt`);
+      files.push({ key: t.fileKey, size: b.size, type: b.type || 'application/octet-stream' });
+      blobs.push(b);
+    }
+    const head = new TextEncoder().encode(JSON.stringify({ format: 1, app: 'Take Crossfader', project: rec, files }));
+    const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, head.length, true);
+    const blob = new Blob([PROJ_MAGIC, len, head, ...blobs], { type: 'application/octet-stream' });
+    download(blob, safeName(rec.name) + '.crossfader');
+    toast(`Projectbestand gemaakt (${(blob.size / 1048576).toFixed(1)} MB). Bewaar het bijvoorbeeld in iCloud Drive of op een USB-stick.`);
+  } catch (err) {
+    console.error(err); toast('Projectbestand maken mislukt: ' + (err.message || err));
+  } finally { busy(false); }
+}
+
+async function importProjectFile(file) {
+  busy(true, `"${file.name}" openen…`);
+  try {
+    const first = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    if (new TextDecoder().decode(first.slice(0, 8)) !== PROJ_MAGIC) throw new Error('dit is geen Take Crossfader-projectbestand');
+    const hl = new DataView(first.buffer).getUint32(8, true);
+    const head = JSON.parse(new TextDecoder().decode(await file.slice(12, 12 + hl).arrayBuffer()));
+    const rec = head.project, keyMap = {};
+    let off = 12 + hl;
+    for (const f of head.files) {
+      const nk = uid();
+      busy(true, `Audio overnemen… (${Object.keys(keyMap).length + 1}/${head.files.length})`);
+      await dbPut('files', file.slice(off, off + f.size, f.type), nk);
+      keyMap[f.key] = nk; off += f.size;
+    }
+    const existing = await dbAll('projects');
+    rec.id = uid();
+    rec.takes = rec.takes.map((t) => ({ ...t, fileKey: keyMap[t.fileKey] }));
+    if (existing.some((p) => p.name === rec.name)) rec.name += ' (geïmporteerd)';
+    rec.updated = Date.now();
+    await dbPut('projects', rec);
+    busy(false);
+    await loadProject(rec.id);
+  } catch (err) {
+    console.error(err); busy(false); toast('Projectbestand openen mislukt: ' + (err.message || err));
+  }
+}
+
+function resetWorkspace() {
+  stop();
+  S.takes = []; S.clips = []; S.markers = []; S.undo = []; S.redo = [];
+  S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0;
+  updateProjectLine(); setSaveState('wordt automatisch bewaard');
+  buildHeads(); S.loading = true; afterEdit(); S.loading = false;
+}
+
+async function newProject() {
+  if (saveTimer || saving) await saveProject();
+  resetWorkspace();
+  store.set('last', null);
+  toast('Nieuw, leeg project. Importeer takes om te beginnen.');
+}
+
+async function loadProject(id) {
+  const rec = await dbGet('projects', id);
+  if (!rec) throw new Error('Project niet gevonden');
+  if (saveTimer || saving) await saveProject();
+  stop();
+  const ac = ensureAC();
+  S.loading = true;
+  const takes = [], missing = [];
+  try {
+    for (const tk of rec.takes) {
+      busy(true, `Project "${rec.name}" openen: ${tk.name}…`);
+      const blob = await dbGet('files', tk.fileKey);
+      if (!blob) { missing.push(tk.name); continue; }
+      const buf = await decodeAudio(ac, await (blob.arrayBuffer ? blob.arrayBuffer() : new Response(blob).arrayBuffer()));
+      const data = [];
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) data.push(buf.getChannelData(ch));
+      takes.push({ id: tk.id, name: tk.name, sync: tk.sync, color: tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true });
+    }
+    S.takes = takes;
+    S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
+    S.markers = rec.markers || [];
+    S.nextId = Math.max(rec.nextId || 1, ...takes.map((t) => t.id + 1), ...S.clips.map((c) => c.id + 1));
+    S.project = { id: rec.id, name: rec.name, created: rec.created };
+    S.undo = []; S.redo = []; S.sel = null; S.range = null;
+    if (rec.view) { S.pps = rec.view.pps; S.view = rec.view.view; S.playhead = rec.view.playhead; }
+    store.set('last', rec.id);
+    updateProjectLine();
+    buildHeads(); afterEdit();
+    setSaveState('bewaard op ' + new Date(rec.updated).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+    toast(missing.length ? `Geopend, maar audio ontbreekt van: ${missing.join(', ')}` : `Project "${rec.name}" geopend`);
+  } finally {
+    S.loading = false; busy(false);
+  }
+}
+
+function openProjects() { select({ kind: 'projects' }); }
+
+async function inspectProjects(el) {
+  el.innerHTML = `<div class="insp-head"><h2>Projecten</h2><span>alles wordt op dit apparaat bewaard, automatisch</span></div><p class="hint">Laden…</p>`;
+  let list = [], est = null;
+  try { list = await dbAll('projects'); } catch (err) { el.innerHTML += `<p class="hint">Bewaren is hier niet beschikbaar: ${esc(err.message || err)}</p>`; return; }
+  try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (_) { /* onbekend */ }
+  if (!S.sel || S.sel.kind !== 'projects') return;      // intussen weggeklikt
+  list.sort((a, b) => b.updated - a.updated);
+  const cur = S.project && S.project.id;
+  const mb = (n) => (n / 1048576).toFixed(n < 1048576 * 10 ? 1 : 0) + ' MB';
+  el.innerHTML = `
+    <div class="insp-head"><h2>Projecten</h2><span>alles wordt op dit apparaat bewaard, automatisch, kort na elke wijziging</span></div>
+    ${S.project ? `<div class="row">
+      <label>Naam van dit project <input type="text" id="pjName" value="${esc(S.project.name)}" style="width:260px"></label>
+      <button id="pjSaveNow">Nu bewaren</button>
+    </div>` : `<p class="hint">Het huidige werk wordt een project zodra je takes importeert.</p>`}
+    <div class="row"><button id="pjNew" class="primary">Nieuw project</button>
+      ${S.project ? '<button id="pjExport" title="Eén bestand met de edit en alle audio, als back-up of om op een andere computer verder te werken">Project als bestand bewaren…</button>' : ''}
+      <button id="pjImport" title="Een .crossfader-bestand openen (wordt als nieuw project toegevoegd)">Projectbestand openen…</button>
+      ${est && est.quota ? `<span class="hint">Opslag in gebruik: ${mb(est.usage || 0)} van ${mb(est.quota)}</span>` : ''}</div>
+    <div class="plist">${list.length ? list.map((p) => `
+      <div class="pitem${p.id === cur ? ' cur' : ''}">
+        <span class="pname">${esc(p.name)}</span>
+        <span class="pmeta">${p.takes.length} take${p.takes.length === 1 ? '' : 's'} · edit ${fmt(p.length || 0, 0)} · ${new Date(p.updated).toLocaleString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        ${p.id === cur ? '<b>geopend</b>' : `<button data-open="${p.id}" class="primary">Openen</button>`}
+        <button data-del="${p.id}" class="danger">Verwijder</button>
+      </div>`).join('') : '<p class="hint">Nog geen bewaarde projecten.</p>'}</div>`;
+  if (S.project) {
+    $('pjName').onchange = (e) => { S.project.name = e.target.value.trim() || S.project.name; updateProjectLine(); saveProject().then(() => renderInspector()); };
+    $('pjSaveNow').onclick = () => saveProject().then(() => renderInspector());
+  }
+  $('pjNew').onclick = () => newProject();
+  if ($('pjExport')) $('pjExport').onclick = exportProjectFile;
+  $('pjImport').onclick = () => $('projFileInput').click();
+  el.querySelectorAll('[data-open]').forEach((b) => {
+    b.onclick = () => loadProject(b.dataset.open).catch((err) => { busy(false); toast('Openen mislukt: ' + (err.message || err)); });
+  });
+  el.querySelectorAll('[data-del]').forEach((b) => {
+    b.onclick = async () => {
+      const p = list.find((x) => x.id === b.dataset.del);
+      if (!confirm(`Project "${p.name}" en de bijbehorende audio definitief verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
+      await dbDel('projects', p.id);
+      if (p.id === cur) { clearTimeout(saveTimer); saveTimer = null; resetWorkspace(); store.set('last', null); }
+      await cleanupFiles();
+      toast(`Project "${p.name}" verwijderd`);
+      openProjects();
+    };
+  });
+}
+
+// bewaar meteen als de app naar de achtergrond gaat of sluit
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveProject(); });
+window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
+
+/* instellingen (per apparaat) */
+function saveSettings() {
+  store.set('settings', JSON.stringify({ zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, syncClips: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
+}
+function loadSettings() {
+  let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
+  if (!o) return;
+  if (typeof o.snap === 'boolean') S.snap = o.snap;
+  if (typeof o.zc === 'boolean') S.zeroCross = o.zc;
+  if (typeof o.defXf === 'number') S.defXf = o.defXf;
+  if (typeof o.rts === 'boolean') S.returnToStart = o.rts;
+  if (typeof o.syncClips === 'boolean') S.syncClips = o.syncClips;
+  if (typeof o.preroll === 'number') S.preroll = o.preroll;
+  if (o.fmt) S.exportFmt = o.fmt;
+  if (typeof o.norm === 'boolean') S.normalize = o.norm;
+  if (typeof o.normDb === 'number') S.normDb = o.normDb;
+}
+function applySettingsUI() {
+  $('snapChk').checked = S.snap; $('zcChk').checked = S.zeroCross; $('defXf').value = ms(S.defXf); $('rtsChk').checked = S.returnToStart;
+}
+
 /* ---------- app: offline + installeren ---------- */
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
   // Eigen service worker met scope ./ (alleen de editor), los van die van de Tuinplanner.
@@ -1910,11 +2836,20 @@ $('installBtn').onclick = async () => {
 window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; toast('Take Crossfader is geïnstalleerd'); });
 
 /* ---------- start ---------- */
+loadSettings();
+applySettingsUI();
 new ResizeObserver(() => resize()).observe($('canvasWrap'));
 buildHeads();
 renderInspector();
 updateButtons();
 requestAnimationFrame(frame);
+// verder waar je gebleven was
+(async () => {
+  const last = store.get('last');
+  if (!last) return;
+  try { await loadProject(last); }
+  catch (err) { console.warn(err); store.set('last', null); busy(false); }
+})();
 </script>
 </body>
 </html>

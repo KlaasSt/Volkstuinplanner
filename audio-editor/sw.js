@@ -1,6 +1,6 @@
 // Service worker van Take Crossfader. Scope: alleen /audio-editor/, los van de Tuinplanner.
 // Verhoog VERSION bij elke wijziging van de app-bestanden.
-const VERSION = "crossfader-20261116e";
+const VERSION = "crossfader-20261116j";
 const ASSETS = [
   "./",
   "./index.html",
@@ -30,8 +30,20 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// De MP3-encoder komt van een CDN; na de eerste keer bewaren we hem, zodat MP3-export ook offline werkt.
+const LAME_URL = "https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js";
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
+  if (req.method === "GET" && req.url === LAME_URL) {
+    event.respondWith(
+      caches.open("tcf-lib").then((cache) => cache.match(req).then((hit) => hit || fetch(req).then((res) => {
+        if (res.ok) cache.put(req, res.clone());
+        return res;
+      })))
+    );
+    return;
+  }
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
 
   // Pagina: eerst het netwerk (altijd de nieuwste versie), offline uit de cache.
