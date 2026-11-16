@@ -246,7 +246,7 @@ const S = {
   playing: null,
   undo: [], redo: [],
   tool: 'move',
-  markers: [], exportFmt: 'wav24', normalize: false, normDb: -1,
+  markers: [], exportRate: 'project', exportFmt: 'wav24', normalize: false, normDb: -1,
   zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: false, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
@@ -284,10 +284,20 @@ function toast(msg) {
 }
 function busy(on, text = 'Bezig…') { $('busy').textContent = text; $('busy').classList.toggle('show', on); }
 
-function ensureAC() {
+/**
+ * Audio-context in de samplefrequentie van het project (= die van de opnames), zodat takes niet
+ * worden omgerekend. Zonder opgegeven frequentie: die van de geluidsuitgang.
+ */
+function ensureAC(rate) {
+  if (S.ac && rate && S.ac.sampleRate !== rate && !S.takes.length) {   // leeg project: opnieuw in de juiste frequentie
+    stopSources();
+    try { S.ac.close(); } catch (_) { /* al gesloten */ }
+    S.ac = null;
+  }
   if (!S.ac) {
     const AC = window.AudioContext || window.webkitAudioContext;
-    S.ac = new AC();
+    try { S.ac = rate ? new AC({ sampleRate: rate }) : new AC(); }
+    catch (_) { S.ac = new AC(); }   // browser kan deze frequentie niet: gebruik de standaard
     S.master = S.ac.createGain();
     S.analyser = S.ac.createAnalyser();
     S.analyser.fftSize = 1024;
@@ -339,20 +349,53 @@ function decodeAudio(ac, ab) {
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
+/** Samplefrequentie uit de kop van een WAV-, AIFF- of FLAC-bestand (anders null). */
+function detectRate(ab) {
+  const v = new DataView(ab), n = ab.byteLength;
+  const str = (o, l) => { let t = ''; for (let i = 0; i < l && o + i < n; i++) t += String.fromCharCode(v.getUint8(o + i)); return t; };
+  try {
+    const id = str(0, 4);
+    if ((id === 'RIFF' || id === 'RF64' || id === 'BW64') && str(8, 4) === 'WAVE') {
+      for (let o = 12; o + 8 <= n;) {
+        const ck = str(o, 4), sz = v.getUint32(o + 4, true);
+        if (ck === 'fmt ') return v.getUint32(o + 12, true);
+        o += 8 + sz + (sz & 1);
+      }
+    }
+    if (id === 'FORM' && (str(8, 4) === 'AIFF' || str(8, 4) === 'AIFC')) {
+      for (let o = 12; o + 8 <= n;) {
+        const ck = str(o, 4), sz = v.getUint32(o + 4, false);
+        if (ck === 'COMM') {   // 80-bit extended float
+          const e = v.getUint16(o + 16, false) & 0x7fff, hi = v.getUint32(o + 18, false), lo = v.getUint32(o + 22, false);
+          return Math.round((hi * 4294967296 + lo) * Math.pow(2, e - 16383 - 63));
+        }
+        o += 8 + sz + (sz & 1);
+      }
+    }
+    if (id === 'fLaC') return (v.getUint32(18, false) >>> 12);   // STREAMINFO: 20 bits
+  } catch (_) { /* onbekend formaat */ }
+  return null;
+}
+const khz = (r) => (r / 1000).toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + ' kHz';
+
 async function importFiles(files) {
   const proj = [...files].find((f) => /\.crossfader$/i.test(f.name));
   if (proj) { importProjectFile(proj); return; }
   const list = [...files].filter((f) => /^audio\//.test(f.type) || /\.(wav|aiff?|flac|mp3|m4a|aac|ogg|oga|opus|webm|caf)$/i.test(f.name));
   if (!list.length) { toast('Geen audiobestanden gevonden'); return; }
-  const ac = ensureAC();
   const wasEmpty = S.takes.length === 0;
   busy(true, `Importeren (0/${list.length})…`);
   let i = 0;
   for (const f of list) {
     busy(true, `Importeren ${++i}/${list.length}: ${f.name}`);
     try {
-      const buf = await decodeAudio(ac, await f.arrayBuffer());
-      addTake(f.name.replace(/\.[^.]+$/, ''), buf, f);
+      const ab = await f.arrayBuffer();
+      const rate = detectRate(ab);
+      const ac = ensureAC(rate);    // eerste take bepaalt de frequentie van het project
+      if (rate && rate !== ac.sampleRate) toast(`Let op: "${f.name}" is ${khz(rate)}, het project ${khz(ac.sampleRate)}. De take wordt omgerekend.`);
+      const buf = await decodeAudio(ac, ab);
+      const t = addTake(f.name.replace(/\.[^.]+$/, ''), buf, f);
+      t.srcRate = rate || null;
     } catch (err) {
       console.error(err);
       toast(`Kon "${f.name}" niet lezen (formaat niet ondersteund door deze browser?)`);
@@ -1017,7 +1060,9 @@ async function exportAudio(a = 0, b = editEnd(), suffix = '') {
   if (!S.clips.length) { toast('De edit is leeg'); return; }
   const fmtDef = EXPORT_FORMATS[S.exportFmt] || EXPORT_FORMATS.wav24;
   const ac = ensureAC();
-  const sr = ac.sampleRate, len = b - a;
+  let sr = S.exportRate === 'project' ? ac.sampleRate : +S.exportRate;
+  const len = b - a;
+  if (fmtDef.ext === 'mp3' && sr > 48000) { sr = 48000; toast('MP3 kan niet hoger dan 48 kHz; er wordt 48 kHz gebruikt.'); }
   if (len <= 0.01) { toast('Niets om te exporteren'); return; }
   const used = new Set(S.clips.map((c) => c.takeId));
   const nch = Math.max(1, ...S.takes.filter((t) => used.has(t.id)).map((t) => t.buffer.numberOfChannels));
@@ -1047,7 +1092,7 @@ async function exportAudio(a = 0, b = editEnd(), suffix = '') {
     const mb = (blob.size / 1048576).toFixed(1);
     toast(peak > 1 && fmtDef.bits !== 32
       ? `Geëxporteerd, maar let op: piek ${pdb} dBFS — er is clipping. Zet normaliseren aan of verlaag de gain.`
-      : `"${name}" geëxporteerd: ${fmt(len)} · ${mb} MB · piek ${pdb} dBFS${normInfo}`);
+      : `"${name}" geëxporteerd: ${fmt(len)} · ${khz(sr)} · ${mb} MB · piek ${pdb} dBFS${normInfo}`);
   } catch (err) {
     console.error(err); toast('Export mislukt: ' + (err.message || err));
   } finally { busy(false); }
@@ -1060,6 +1105,7 @@ function inspectExport(el) {
     <div class="insp-head"><h2>Exporteren</h2><span>${S.project ? esc(S.project.name) : 'edit'} · ${fmt(editEnd(), 1)}</span></div>
     <div class="row">
       <label>Formaat <select id="exFmt">${Object.entries(EXPORT_FORMATS).map(([k, v]) => `<option value="${k}"${k === S.exportFmt ? ' selected' : ''}>${v.label}</option>`).join('')}</select></label>
+      <label>Samplefrequentie <select id="exRate">${[['project', `zoals het project (${S.ac ? khz(S.ac.sampleRate) : '?'})`], ['44100', '44,1 kHz (cd)'], ['48000', '48 kHz (video)'], ['96000', '96 kHz']].map(([k, l]) => `<option value="${k}"${k === String(S.exportRate) ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
       <label title="Zet de luidste piek op dit niveau. −1 dBFS laat wat ruimte voor MP3/streaming."><input type="checkbox" id="exNorm"${S.normalize ? ' checked' : ''}> Normaliseren naar</label>
       <label><input type="number" id="exNormDb" value="${S.normDb}" step="0.5" min="-24" max="0" style="width:64px"> dBFS</label>
     </div>
@@ -1070,6 +1116,7 @@ function inspectExport(el) {
     </div>`;
   $('exFmt').onchange = (e) => { S.exportFmt = e.target.value; saveSettings(); renderInspector(); };
   $('exNorm').onchange = (e) => { S.normalize = e.target.checked; saveSettings(); };
+  $('exRate').onchange = (e) => { S.exportRate = e.target.value; saveSettings(); };
   $('exNormDb').onchange = (e) => { S.normDb = clamp(+e.target.value || -1, -24, 0); saveSettings(); };
   $('exAll').onclick = () => exportAudio(0, editEnd());
   if (r) $('exSel').onclick = () => exportAudio(r[0], r[1], ' (selectie)');
@@ -1904,7 +1951,7 @@ function inspectTake(el, t) {
   const others = S.takes.filter((x) => x !== t);
   const ra = r && Math.min(r.t0, r.t1), rb = r && Math.max(r.t0, r.t1);
   el.innerHTML = `
-    <div class="insp-head"><h2>Take</h2><span>${t.buffer.numberOfChannels === 1 ? 'mono' : t.buffer.numberOfChannels === 2 ? 'stereo' : t.buffer.numberOfChannels + ' kanalen'} · ${t.buffer.sampleRate} Hz · ${fmt(t.buffer.duration)}</span></div>
+    <div class="insp-head"><h2>Take</h2><span>${t.buffer.numberOfChannels === 1 ? 'mono' : t.buffer.numberOfChannels === 2 ? 'stereo' : t.buffer.numberOfChannels + ' kanalen'} · ${t.srcRate && t.srcRate !== t.buffer.sampleRate ? `bestand ${khz(t.srcRate)}, omgerekend naar ${khz(t.buffer.sampleRate)}` : khz(t.buffer.sampleRate)} · ${fmt(t.buffer.duration)}</span></div>
     ${r ? `<div class="row">
       <b>Selectie ${fmt(ra)} – ${fmt(rb)} (${(rb - ra).toFixed(2)} s)</b>
       <button id="tkComp" class="primary">Naar edit <kbd>E</kbd></button>
@@ -3218,7 +3265,8 @@ async function saveProject() {
       const p = S.project;
       await dbPut('projects', {
         id: p.id, name: p.name, created: p.created, updated: Date.now(),
-        takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration })),
+        sr: S.ac ? S.ac.sampleRate : null,
+        takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration, srcRate: t.srcRate || null })),
         clips: S.clips.map((c) => ({ ...c })), markers: S.markers, nextId: S.nextId,
         view: { pps: S.pps, view: S.view, playhead: S.playhead }, length: editEnd(),
       });
@@ -3319,7 +3367,13 @@ async function loadProject(id) {
   if (!rec) throw new Error('Project niet gevonden');
   if (saveTimer || saving) await saveProject();
   stop();
-  const ac = ensureAC();
+  // frequentie van het project; bij oudere projecten uit de kop van het eerste audiobestand
+  let rate = rec.sr || null;
+  if (!rate && rec.takes.length) {
+    try { const b0 = await dbGet('files', rec.takes[0].fileKey); if (b0) rate = detectRate(await b0.slice(0, 65536).arrayBuffer()); } catch (_) { rate = null; }
+  }
+  if (S.ac && rate && S.ac.sampleRate !== rate) { S.takes = []; S.clips = []; }   // nodig om de context opnieuw te maken
+  const ac = ensureAC(rate);
   S.loading = true;
   const takes = [], missing = [];
   try {
@@ -3330,7 +3384,7 @@ async function loadProject(id) {
       const buf = await decodeAudio(ac, await (blob.arrayBuffer ? blob.arrayBuffer() : new Response(blob).arrayBuffer()));
       const data = [];
       for (let ch = 0; ch < buf.numberOfChannels; ch++) data.push(buf.getChannelData(ch));
-      takes.push({ id: tk.id, name: tk.name, sync: tk.sync, color: tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true });
+      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true });
     }
     S.takes = takes;
     S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
@@ -3407,7 +3461,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
+  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -3420,6 +3474,7 @@ function loadSettings() {
   if (typeof o.sc2 === 'boolean') S.syncClips = o.sc2;
   if (typeof o.preroll === 'number') S.preroll = o.preroll;
   if (o.fmt) S.exportFmt = o.fmt;
+  if (o.rate) S.exportRate = o.rate;
   if (typeof o.norm === 'boolean') S.normalize = o.norm;
   if (typeof o.normDb === 'number') S.normDb = o.normDb;
 }
