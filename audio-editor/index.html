@@ -3182,7 +3182,7 @@ function inspectAlign(el, s) {
       <span class="group"><button id="alPA">▶ A</button><button id="alPB">▶ B</button><button id="alPAB" title="Beide tegelijk: hoe beter uitgelijnd, hoe voller en minder zwiepend het klinkt">▶ A + B samen</button></span>
       <button id="alClose">Sluiten</button>
     </div>
-    <p class="hint">Sleep in rij <b>B</b> of in de onderste rij om B te verschuiven. Sleep in rij <b>A</b> of veeg met twee vingers om door de tijd te schuiven; knijp (of ⌘ + twee vingers) om te zoomen. Pijltjes ←/→ verschuiven B 1 ms, met Shift 10 ms, met ⌥ 1 sample.${s.mode === 'clips' ? ' Lichte vlakken = het deel van de clip dat in de edit klinkt; gele lijnen = de crossfade.' : ''}</p>`;
+    <p class="hint">Sleep in rij <b>B</b> of in de onderste rij om B te verschuiven. Sleep in rij <b>A</b> of veeg met twee vingers om door de tijd te schuiven; knijp (of ⌘ + twee vingers) om te zoomen. Pijltjes ←/→ verschuiven B 1 ms, met Shift 10 ms, met ⌥ 1 sample.${s.mode === 'clips' ? ' Lichte vlakken = het deel van de clip dat in de edit klinkt; gouden lijnen = de crossfade.' : ''}</p>`;
   if (s.mode === 'takes') {
     const pick = (which, other) => (e) => {
       s[which] = +e.target.value;
@@ -3844,7 +3844,7 @@ function inspectRepair(el, s) {
     <div class="row">
       <span class="group">Zoom <button id="rpZo">−</button><button id="rpZi">+</button><button id="rpPrev" title="Eerder">◀</button><button id="rpNext" title="Later">▶</button></span>
       <label>Helderheid <select id="rpBright">${[[0, 'normaal'], [12, 'meer'], [24, 'veel (zachte passages)']].map(([v, l]) => `<option value="${v}"${v === S.repBright ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-      <button id="rpPlay" class="primary" title="Speelt de take rond het gebied of de gekozen reparatie, anders vanaf de gele cursor. Nogmaals: stop.">▶ Beluister <kbd>Spatie</kbd></button>
+      <button id="rpPlay" class="primary" title="Speelt de take rond het gebied of de gekozen reparatie, anders vanaf de gouden cursor. Nogmaals: stop.">▶ Beluister <kbd>Spatie</kbd></button>
       ${clip ? '<button id="rpPlayEdit" title="Speelt de edit rond dit stuk, met de overgangen erbij">▶ In de edit</button>' : ''}
       <button id="rpAB"${S.bypass ? ' class="act"' : ''} title="Vergelijk: schakel alle reparaties tijdelijk uit en hoor het origineel">${S.bypass ? 'A/B: je hoort het origineel' : 'A/B: origineel'} <kbd>X</kbd></button>
       <button id="rpClose">Sluiten</button>
