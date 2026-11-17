@@ -139,6 +139,16 @@ kbd {
 button kbd { height: 17px; min-width: 17px; font-size: 10.5px; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); color: var(--muted); }
 
 /* instellingen (tandwiel) */
+.menu { margin: 0; inset: auto; position: fixed; padding: 6px; min-width: 230px; background: var(--panel); color: var(--text); border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 18px 40px rgba(4,6,12,.55); }
+.menu button { display: flex; width: 100%; justify-content: space-between; background: none; border-color: transparent; height: 32px; }
+.menu button:hover:not(:disabled) { background: var(--panel2); border-color: transparent; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 2px; }
+#closeDlg { width: min(520px, calc(100vw - 40px)); padding: 22px 24px; background: var(--panel); color: var(--text); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 24px 60px rgba(4,6,12,.6); }
+#closeDlg::backdrop { background: rgba(8,10,16,.6); }
+#closeDlg h2 { margin: 0 0 6px; font-size: 18px; }
+#closeDlg .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0 12px; }
+#closeDlg .choices button { height: 38px; }
+#closeDlg .small { font-size: 12px; margin: 0; }
 #setPop {
   margin: 0; inset: auto; position: fixed; padding: 14px 16px; width: 300px;
   background: var(--panel); color: var(--text); border: 1px solid var(--line2); border-radius: 10px;
@@ -281,7 +291,7 @@ body.empty #welcome { display: block; }
       <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="120" fill="#232a3b"/><g fill="none" stroke-linecap="round" stroke-width="34"><path d="M96 150 C 220 150, 292 362, 416 362" stroke="#5b8def"/><path d="M96 362 C 220 362, 292 150, 416 150" stroke="#e39b3b"/></g></svg>
       <div class="bt">
         <strong>Take Crossfader</strong>
-        <span class="sub"><button id="projName" title="Projecten openen, hernoemen of een nieuw project beginnen">Nog geen project</button><span id="saveState">wordt automatisch bewaard</span></span>
+        <span class="sub"><button id="projName" popovertarget="projMenu" title="Project: bewaren, sluiten, verwijderen, andere projecten">Nog geen project</button><span id="saveState">wordt automatisch bewaard</span></span>
       </div>
     </div>
     <div class="view">
@@ -322,6 +332,14 @@ body.empty #welcome { display: block; }
     <span class="grp" role="group" aria-label="Bewerken">
       <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button><button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">Marker</button><button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button><span class="arrow" aria-hidden="true">·</span><button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button><button id="repairBtn" title="Bijgeluiden repareren (R): kuchje, tik, stoelgeschuif of verkeer wegwerken in het spectrogram van de geselecteerde clip of take">Repareer</button></span>
   </div>
+  <div id="projMenu" popover class="menu">
+    <button id="pmSave">Nu bewaren</button>
+    <button id="pmFile">Als bestand bewaren…</button>
+    <button id="pmRename">Naam wijzigen…</button>
+    <hr>
+    <button id="pmClose">Project sluiten… <kbd>⌘⇧W</kbd></button>
+    <button id="pmAll">Alle projecten</button>
+  </div>
   <div id="setPop" popover>
     <h3>Instellingen</h3>
     <label class="opt"><input type="checkbox" id="rtsChk" checked> Terug naar start<small>Na stoppen springt de afspeelkop terug naar waar je begon met afspelen.</small></label>
@@ -361,6 +379,17 @@ body.empty #welcome { display: block; }
     </div>
   </section>
 </main>
+<dialog id="closeDlg" aria-labelledby="closeTitle">
+  <h2 id="closeTitle" tabindex="-1" autofocus>Project sluiten</h2>
+  <p id="closeInfo" class="hint"></p>
+  <div class="choices">
+    <button id="cdKeep" class="primary">Bewaren en sluiten</button>
+    <button id="cdFile">Ook als bestand bewaren…</button>
+    <button id="cdDel" class="danger">Verwijderen…</button>
+    <button id="cdCancel" class="ghost">Annuleren</button>
+  </div>
+  <p class="hint small">Je werk wordt ook zonder dit venster steeds automatisch bewaard. Verwijderen haalt de edit én de bewaarde audio van dit project weg uit de app; je originele opnames op je computer blijven staan.</p>
+</dialog>
 <dialog id="keysDlg" aria-labelledby="keysTitle">
   <header><h2 id="keysTitle" tabindex="-1" autofocus>Sneltoetsen</h2><button id="keysClose" class="ghost" aria-label="Sluiten">Sluiten <kbd>Esc</kbd></button></header>
   <div class="cols">
@@ -387,6 +416,7 @@ body.empty #welcome { display: block; }
       <dt><kbd>⌘A</kbd></dt><dd>Alle clips selecteren</dd>
       <dt><kbd>⌥←</kbd> <kbd>⌥→</kbd></dt><dd>Clips 10 ms verschuiven (<kbd>⇧</kbd> 1 s)</dd>
       <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Verplaatsen · selecteren · hand</dd>
+      <dt><kbd>⌘⇧W</kbd></dt><dd>Project sluiten (bewaren of verwijderen)</dd>
     </dl></section>
     <section><h3>Crossfade geselecteerd</h3><dl>
       <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Knippunt 1 ms (<kbd>⇧</kbd> 10 ms)</dd>
@@ -4354,14 +4384,15 @@ $('snapChk').onchange = (e) => { S.snap = e.target.checked; saveSettings(); };
 $('rtsChk').onchange = (e) => { S.returnToStart = e.target.checked; saveSettings(); };
 $('zcChk').onchange = (e) => { S.zeroCross = e.target.checked; saveSettings(); };
 $('projBtn').onclick = openProjects;
-$('projName').onclick = openProjects;
+
 $('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 1000; saveSettings(); };
 $('exportBtn').onclick = () => select({ kind: 'export' });
 $('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importProjectFile(f); };
 
 document.addEventListener('keydown', (e) => {
   const k = e.key, mod = e.ctrlKey || e.metaKey;
-  if ($('keysDlg').open) return;                                  // sneltoetsenoverzicht open: Esc sluit het
+  if ($('keysDlg').open || $('closeDlg').open) return;
+  if (mod && e.shiftKey && (e.code === 'KeyW')) { e.preventDefault(); askClose(); return; }                                  // sneltoetsenoverzicht open: Esc sluit het
   if (k === '?' && !e.target.matches('input[type=text], input[type=number], textarea')) { e.preventDefault(); showKeys(); return; }
   // ⌥E geeft op een Mac een accentteken; herken de toets daarom aan zijn plek
   if (e.code === 'KeyE' && e.altKey && !mod && !e.target.matches('input, select, textarea')) { e.preventDefault(); editAction(true); return; }
@@ -4914,6 +4945,69 @@ $('keysDlg').addEventListener('click', (e) => { if (e.target === $('keysDlg')) $
 // zodra de letter geladen is, de tijdlijn opnieuw tekenen
 if (document.fonts && document.fonts.load) document.fonts.load('12px "Atkinson Hyperlegible Next"').then(() => { S.dirty = true; }).catch(() => {});
 welcomeArt();
+
+/* ---------- project sluiten ---------- */
+function placeUnder(pop, btn, alignLeft) {
+  const r = btn.getBoundingClientRect();
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, alignLeft ? r.left : r.right - pop.offsetWidth)) + 'px';
+}
+$('projMenu').addEventListener('toggle', (e) => {
+  if (e.newState !== 'open') return;
+  const has = !!S.takes.length;
+  for (const id of ['pmSave', 'pmFile', 'pmRename', 'pmClose']) $(id).disabled = !has;
+  placeUnder($('projMenu'), $('projName'), true);
+});
+const menuDo = (fn) => () => { $('projMenu').hidePopover(); fn(); };
+$('pmSave').onclick = menuDo(() => saveProject().then(() => toast(`"${S.project.name}" is bewaard`)));
+$('pmFile').onclick = menuDo(exportProjectFile);
+$('pmRename').onclick = menuDo(() => {
+  const n = prompt('Nieuwe naam voor dit project:', S.project ? S.project.name : suggestName());
+  if (!n || !n.trim()) return;
+  saveProject().then(() => { S.project.name = n.trim(); updateProjectLine(); return saveProject(); }).then(() => toast(`Hernoemd naar "${S.project.name}"`));
+});
+$('pmClose').onclick = menuDo(askClose);
+$('pmAll').onclick = menuDo(openProjects);
+
+/** Vraag wat er met het project moet gebeuren voordat het sluit. */
+async function askClose() {
+  if (!S.takes.length) { toast('Er is geen project open'); return; }
+  if (S.playing) stop();
+  if (saveTimer || saving || !S.project) await saveProject();
+  const d = $('closeDlg');
+  $('closeTitle').textContent = `"${S.project.name}" sluiten`;
+  $('closeInfo').textContent = `${S.takes.length} take${S.takes.length === 1 ? '' : 's'}, edit ${fmt(editEnd(), 0)}. ${$('saveState').textContent.replace(/^./, (c) => c.toUpperCase())}.`;
+  d.showModal();
+}
+/** Bewaren en terug naar het startscherm; het project blijft bij 'Verder met …' staan. */
+async function closeProject() {
+  const name = S.project ? S.project.name : '';
+  await saveProject();
+  const id = S.project && S.project.id;
+  resetWorkspace();
+  if (id) store.set('last', id);
+  fillRecent();
+  toast(`"${name}" is bewaard en gesloten`);
+}
+async function deleteCurrentProject() {
+  const p = S.project; if (!p) return;
+  if (!confirm(`Project "${p.name}" en de bewaarde audio ervan definitief uit de app verwijderen? Dit kan niet ongedaan worden gemaakt. Je originele opnames op je computer blijven staan.`)) return false;
+  clearTimeout(saveTimer); saveTimer = null;
+  if (saving) await saving;
+  await dbDel('projects', p.id);
+  resetWorkspace(); store.set('last', null);
+  await cleanupFiles();
+  fillRecent();
+  toast(`Project "${p.name}" is verwijderd`);
+  return true;
+}
+$('cdKeep').onclick = () => { $('closeDlg').close(); closeProject(); };
+$('cdFile').onclick = async () => { $('closeDlg').close(); await exportProjectFile(); askClose(); };
+$('cdDel').onclick = async () => { $('closeDlg').close(); const done = await deleteCurrentProject(); if (done === false) askClose(); };
+$('cdCancel').onclick = () => $('closeDlg').close();
+$('closeDlg').addEventListener('click', (e) => { if (e.target === $('closeDlg')) $('closeDlg').close(); });
+// sluiten van het venster terwijl er nog iets bewaard moet worden: de browser vraagt of je zeker bent
+window.addEventListener('beforeunload', (e) => { if (saveTimer || saving) { saveProject(); e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- start ---------- */
 loadSettings();
