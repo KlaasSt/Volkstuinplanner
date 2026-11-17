@@ -345,6 +345,7 @@ body.empty #welcome { display: block; }
         <h1>Eén uitvoering uit je beste takes</h1>
         <p class="lead">Leg de opnames van hetzelfde stuk onder elkaar, kies per passage de mooiste en monteer ze met crossfades. Je opnames blijven onaangeroerd en alles blijft op deze computer.</p>
         <div class="acts">
+          <button id="welResume" class="primary" hidden></button>
           <button id="welImport" class="primary">Importeer takes</button>
           <button id="welOpen">Open een project</button>
           <button id="welDemo">Probeer de demo</button>
@@ -2266,7 +2267,7 @@ function renderInspector() {
       <li><b>Kuchje, tik of stoelgeschuif?</b> Selecteer de clip of take en druk <kbd>R</kbd>: sleep in het spectrogram een rechthoek om het bijgeluid en kies <i>Dempen</i> of <i>Opvullen</i>, of laat tikken automatisch zoeken. <kbd>X</kbd> vergelijkt met het origineel.</li>
       <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
-      <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen ga je verder waar je was; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
+      <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen kies je op het startscherm <i>Verder met …</i>; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
     </ol>
     <p>Uitgebreide werkwijzen per situatie staan in de <a href="handleiding.pdf" target="_blank">handleiding</a>.</p>
     </div>
@@ -4872,9 +4873,16 @@ async function fillRecent() {
   let list = [];
   try { list = await dbAll('projects'); } catch (_) { list = []; }
   list.sort((a, b) => b.updated - a.updated);
+  const last = list.find((p) => p.id === store.get('last')) || list[0], rb = $('welResume');
+  rb.hidden = !last; $('welImport').classList.toggle('primary', !last);
+  if (last) {
+    rb.textContent = `Verder met “${last.name}”`;
+    rb.title = `Open het project waar je het laatst aan werkte (${new Date(last.updated).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})`;
+    rb.onclick = () => loadProject(last.id).catch((err) => { busy(false); toast('Openen mislukt: ' + (err.message || err)); });
+  }
   if (!list.length) { el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = `<h2>Verder met een project</h2><div class="plist">${list.slice(0, 4).map((p) => `
+  el.innerHTML = `<h2>Recente projecten</h2><div class="plist">${list.slice(0, 4).map((p) => `
     <div class="pitem"><span class="pname">${esc(p.name)}</span>
       <span class="pmeta">${p.takes.length} take${p.takes.length === 1 ? '' : 's'}, edit ${fmt(p.length || 0, 0)} · ${new Date(p.updated).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
       <button data-wopen="${p.id}">Openen</button></div>`).join('')}</div>`;
@@ -4915,13 +4923,8 @@ buildHeads();
 renderInspector();
 updateButtons();
 requestAnimationFrame(frame);
-// verder waar je gebleven was
-(async () => {
-  const last = store.get('last');
-  if (!last) return;
-  try { await loadProject(last); }
-  catch (err) { console.warn(err); store.set('last', null); busy(false); }
-})();
+// bij het openen: het startscherm, met bovenaan 'Verder met …' voor het laatste project
+fillRecent();
 </script>
 </body>
 </html>
