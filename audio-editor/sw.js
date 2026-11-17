@@ -1,6 +1,6 @@
 // Service worker van Take Crossfader. Scope: alleen /audio-editor/, los van de Tuinplanner.
 // Verhoog VERSION bij elke wijziging van de app-bestanden.
-const VERSION = "crossfader-20261117b";
+const VERSION = "crossfader-20261117c";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,7 +10,9 @@ const ASSETS = [
   "./icon-512.png",
   "./icon-maskable-512.png",
   "./apple-touch-icon.png",
-  "./handleiding.pdf"
+  "./handleiding.pdf",
+  "./fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2",
+  "./fonts/atkinson-hyperlegible-next-latin-wght-italic.woff2"
 ];
 
 self.addEventListener("install", (event) => {

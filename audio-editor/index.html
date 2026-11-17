@@ -3,200 +3,331 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#14171c">
+<meta name="theme-color" content="#1b2130">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Crossfader">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Take Crossfader</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 800; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("fonts/atkinson-hyperlegible-next-latin-wght-italic.woff2") format("woff2");
+  font-weight: 200 800; font-style: italic; font-display: swap;
+}
+/* Avondkerk: leisteenblauw schip, glas-in-loodkleuren voor de takes, orgelpijp-goud voor monteren. */
 :root {
-  --bg: #0f1115;
-  --panel: #171a20;
-  --panel2: #1d2128;
-  --lane: #14171c;
-  --line: #2a2f38;
-  --text: #e6e8ec;
-  --muted: #8b93a1;
-  --accent: #4f9dff;
-  --accent2: #ff9f43;
-  --danger: #ff5c6c;
-  --playhead: #ff5c6c;
+  --bg: #141925;        /* schip */
+  --panel: #1b2130;     /* steen */
+  --panel2: #242b3c;    /* knop */
+  --well: #10141e;      /* verzonken vlak */
+  --lane: #171c28;
+  --line: #2f374b;
+  --line2: #3e4862;
+  --text: #ece6d8;      /* perkament */
+  --muted: #9aa1b3;
+  --faint: #6e7690;
+  --accent: #4f86e8;    /* kobalt: selectie, links */
+  --gold: #e3ae4b;      /* monteren: doelpunten, Overnemen, hoofdknoppen */
+  --gold-hi: #f0c46c;
+  --gold-ink: #241a06;
+  --danger: #ef5b4c;
+  --playhead: #ef5b4c;
+  --ok: #4fbf9a;        /* verdigris: markers, reparaties */
+  --ui: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 13.5px/1.45 var(--ui);
   display: flex; flex-direction: column;
   -webkit-user-select: none; user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 button, select, input { font: inherit; color: inherit; }
 button {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
-  padding: 5px 10px; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px;
+  padding: 0 11px; cursor: pointer; white-space: nowrap;
 }
-button:hover:not(:disabled) { border-color: #3d4452; background: #242934; }
-button:disabled { opacity: .4; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover:not(:disabled) { background: #3b8af0; }
-button.danger { color: var(--danger); }
-button.act, button.act:hover:not(:disabled) { background: var(--accent2); border-color: var(--accent2); color: #14171c; }
+button:hover:not(:disabled) { border-color: var(--line2); background: #2c3448; }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .38; cursor: default; }
+button.primary { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-weight: 650; }
+button.primary:hover:not(:disabled) { background: var(--gold-hi); border-color: var(--gold-hi); }
+button.primary kbd { background: rgba(36,26,6,.14); border-color: rgba(36,26,6,.28); color: var(--gold-ink); }
+button.danger { color: #ff8a7d; }
+button.act, button.act:hover:not(:disabled) { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
+button.ghost { background: none; border-color: transparent; color: var(--muted); }
+button.ghost:hover:not(:disabled) { background: var(--panel2); color: var(--text); border-color: var(--line); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
 select, input[type=number], input[type=text] {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px;
+  height: 30px; background: var(--well); border: 1px solid var(--line); border-radius: 7px; padding: 0 8px;
 }
-input[type=number] { width: 72px; }
-input[type=range] { accent-color: var(--accent); }
-label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+input[type=number] { width: 72px; font-variant-numeric: tabular-nums; }
+input[type=range] { accent-color: var(--gold); }
+input[type=checkbox] { accent-color: var(--gold); width: 15px; height: 15px; margin: 0; }
+label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); }
+a { color: var(--gold); }
 
-header.bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
-  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+/* ---------- kop: project en bestanden ---------- */
+header.bar { background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 16px 8px;
   padding-top: max(10px, env(safe-area-inset-top));
   padding-left: max(16px, env(safe-area-inset-left));
   padding-right: max(16px, env(safe-area-inset-right));
 }
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; margin-right: auto; }
+.brand svg { width: 30px; height: 30px; flex: none; }
+.brand .bt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.brand strong { font-size: 15.5px; font-weight: 700; letter-spacing: -.005em; }
+.brand .sub { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--muted); min-width: 0; }
+#projName { height: auto; padding: 0; background: none; border: 0; color: var(--text); font-weight: 600; font-size: 12.5px; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; }
+#projName::after { content: "▾"; color: var(--muted); margin-left: 4px; font-size: 10px; }
+#projName:hover { color: var(--gold-hi); background: none; }
+#saveState { white-space: nowrap; }
+#saveState.bad { color: #ff8a7d; font-weight: 600; }
+.files, .view { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.view { margin-right: 6px; }
 #installBtn[hidden] { display: none; }
-button.tool { min-width: 34px; padding: 4px 8px; }
-button.tool.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.brand { display: flex; flex-direction: column; margin-right: 8px; }
-.brand strong { font-size: 15px; }
-.brand span { color: var(--muted); font-size: 11px; }
-button.linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 11px; text-decoration: underline; text-underline-offset: 2px; }
-button.linkish:hover:not(:disabled) { background: none; color: #7db6ff; }
-.plist { display: grid; gap: 6px; max-width: 860px; margin-top: 8px; }
-.pitem { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-.pitem.cur { border-color: var(--accent); }
-.pitem .pname { font-weight: 600; min-width: 160px; }
-.pitem .pmeta { color: var(--muted); flex: 1; min-width: 180px; }
-.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
-.clock {
-  font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #0b0d10; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; min-width: 104px; text-align: center;
-}
-#playBtn { min-width: 40px; }
-#playBtn.on { background: var(--danger); border-color: var(--danger); color: #fff; }
 
-main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* ---------- werkbalk: montage ---------- */
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  padding: 0 16px 10px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.grp { display: inline-flex; align-items: center; gap: 2px; padding: 2px; background: var(--well); border: 1px solid var(--line); border-radius: 9px; }
+.grp > button { height: 28px; border-color: transparent; background: none; border-radius: 6px; padding: 0 9px; }
+.grp > button:hover:not(:disabled) { background: var(--panel2); border-color: var(--line); }
+.grp > button.primary { background: var(--gold); border-color: var(--gold); }
+.grp > button.primary:hover:not(:disabled) { background: var(--gold-hi); }
+.grp > .lbl { color: var(--faint); font-size: 12px; padding: 0 4px 0 7px; }
+.grp > .arrow { color: var(--faint); font-size: 12px; padding: 0 1px; }
+button.tool { min-width: 32px; padding: 0 8px; font-size: 15px; }
+button.tool.on, .grp > button.tool.on { background: var(--text); border-color: var(--text); color: var(--bg); }
+.montage { background: linear-gradient(var(--well), var(--well)) padding-box, linear-gradient(90deg, rgba(227,174,75,.5), rgba(227,174,75,.15)) border-box; border-color: transparent; }
+.toolbar .push { margin-left: auto; }
+.transport { display: inline-flex; align-items: center; gap: 8px; }
+#playBtn { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 15px; background: var(--text); border-color: var(--text); color: var(--bg); }
+#playBtn:hover:not(:disabled) { background: #fffaf0; }
+#playBtn.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+.clock {
+  font-variant-numeric: tabular-nums; font-size: 19px; font-weight: 600; letter-spacing: .01em;
+  background: var(--well); border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; min-width: 118px; text-align: center;
+}
+kbd {
+  font-family: var(--ui); font-size: 11px; font-weight: 700; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
+  background: var(--panel2); border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; color: var(--text);
+}
+button kbd { height: 17px; min-width: 17px; font-size: 10.5px; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); color: var(--muted); }
+
+/* instellingen (tandwiel) */
+#setPop {
+  margin: 0; inset: auto; position: fixed; padding: 14px 16px; width: 300px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line2); border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(4,6,12,.55);
+}
+#setPop h3 { margin: 0 0 10px; font-size: 13.5px; }
+#setPop .opt { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; align-items: start; padding: 8px 0; border-top: 1px solid var(--line); color: var(--text); }
+#setPop .opt small { grid-column: 2; color: var(--muted); font-size: 12px; line-height: 1.35; }
+#setPop .opt.num { grid-template-columns: 1fr auto; align-items: center; }
+#setPop .opt.num small { grid-column: 1 / -1; }
+
+/* ---------- tijdlijn ---------- */
+main { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
 .timeline {
-  display: flex; overflow-y: auto; overflow-x: hidden; max-height: 58vh; min-height: 200px;
+  display: flex; overflow-y: auto; overflow-x: hidden; max-height: 58vh; min-height: 200px; flex: none;
   border-bottom: 1px solid var(--line); background: var(--lane);
 }
 .heads { flex: none; width: 150px; background: var(--panel); border-right: 1px solid var(--line); }
 .head {
-  border-bottom: 1px solid var(--line); padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;
-  justify-content: center; cursor: pointer; overflow: hidden;
+  border-bottom: 1px solid var(--line); padding: 7px 10px; display: flex; flex-direction: column; gap: 5px;
+  justify-content: center; cursor: pointer; overflow: hidden; border-left: 3px solid transparent;
 }
-.head.ruler { cursor: default; color: var(--muted); font-size: 11px; padding: 0 8px; }
-.head.edit { cursor: default; }
-.head.edit strong { letter-spacing: .08em; }
-.head .name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.head.ruler { cursor: default; color: var(--faint); font-size: 11px; padding: 0 10px; }
+.head.edit { cursor: default; background: #191f2d; }
+.head.edit strong { font-size: 14px; letter-spacing: .02em; }
+.head .name { display: flex; align-items: center; gap: 7px; min-width: 0; font-weight: 600; }
 .head .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.head .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.head .meta { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; }
-.head button { padding: 1px 7px; font-size: 11px; }
-.head.sel { background: #222833; }
-.head.placeholder { color: var(--muted); font-size: 11px; cursor: default; }
-#meter { width: 100%; height: 6px; background: #0b0d10; border-radius: 3px; display: block; }
+.head .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.06); }
+.head .meta { color: var(--muted); font-size: 11.5px; display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
+.head button { height: 22px; padding: 0 8px; font-size: 11.5px; border-radius: 6px; }
+.head:hover:not(.ruler):not(.edit):not(.placeholder) { background: #1f2636; }
+.head.sel { background: #222a3c; border-left-color: var(--c, var(--accent)); }
+.head.placeholder { color: var(--faint); font-size: 11.5px; cursor: default; }
+#meter { width: 100%; height: 5px; background: var(--well); border-radius: 3px; display: block; }
 .canvas-wrap { flex: 1; min-width: 0; position: relative; }
 #tl { display: block; touch-action: none; }
-.scrollrow { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 158px; background: var(--panel); border-bottom: 1px solid var(--line); }
-#hscroll { flex: 1; }
+.scrollrow { display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 160px; background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
+#hscroll { flex: 1; height: 14px; }
 
-.inspector { flex: 1; overflow: auto; padding: 14px 16px 24px; background: var(--bg); min-height: 180px; }
-.insp-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-.insp-head h2 { margin: 0; font-size: 15px; }
+/* ---------- paneel onderaan ---------- */
+.inspector { flex: 1; overflow: auto; padding: 16px 20px 28px; background: var(--bg); min-height: 180px; }
+.insp-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.insp-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
 .insp-head span { color: var(--muted); }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 10px 0; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 12px 0; }
 .group { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
-.group button { padding: 3px 8px; }
-.hint { color: var(--muted); font-size: 12px; }
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; color: var(--muted); }
-.kv b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.group button { padding: 0 9px; }
+.hint { color: var(--muted); font-size: 12.5px; max-width: 78ch; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; color: var(--muted); }
+.kv b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 body.aligning .timeline { max-height: 30vh; min-height: 150px; }
-#alCanvas { width: 100%; height: 352px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; }
-#repCanvas { width: 100%; height: 344px; display: block; background: #0b0d10; outline: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: crosshair; }
+#alCanvas { width: 100%; height: 352px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 10px; touch-action: none; }
+#repCanvas { width: 100%; height: 344px; display: block; background: var(--well); outline: 1px solid var(--line); border-radius: 10px; touch-action: none; cursor: crosshair; }
+#xfCanvas { width: 100%; height: 240px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 10px; touch-action: none; cursor: col-resize; }
+.plist { display: grid; gap: 6px; max-width: 900px; margin-top: 8px; }
+.pitem { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 9px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
+.pitem.cur { border-color: var(--gold); box-shadow: inset 3px 0 0 var(--gold); }
+.pitem .pname { font-weight: 650; min-width: 160px; }
+.pitem .pmeta { color: var(--muted); flex: 1; min-width: 180px; }
 .pitem.off .pname, .pitem.off .pmeta { opacity: .45; }
-#xfCanvas { width: 100%; height: 240px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: col-resize; }
-.help { max-width: 860px; color: var(--muted); }
-.help h2 { color: var(--text); font-size: 15px; margin: 0 0 8px; }
-.help ol { padding-left: 20px; margin: 6px 0 14px; }
-.help li { margin: 4px 0; }
+
+/* rust-scherm: niets geselecteerd */
+.help { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px 44px; max-width: 1180px; color: var(--muted); }
+.help h2 { color: var(--text); font-size: 16px; margin: 0 0 10px; }
+.help ol { padding-left: 20px; margin: 0 0 12px; }
+.help li { margin: 6px 0; line-height: 1.5; }
+.help li::marker { color: var(--gold); font-weight: 700; }
 .help b { color: var(--text); }
-kbd {
-  font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--panel2);
-  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--text);
-}
-.keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 18px; }
+.help p { margin: 0; }
+.keys { display: grid; grid-template-columns: 1fr; gap: 7px; align-content: start; }
+.keys span { display: block; padding-bottom: 7px; border-bottom: 1px solid var(--line); }
+.keys span:last-child { border-bottom: 0; }
+
+/* ---------- startscherm ---------- */
+#welcome { display: none; position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); }
+body.empty #welcome { display: block; }
+.wel { max-width: 1000px; margin: 0 auto; padding: 48px 28px 60px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px 56px; align-items: center; }
+.wel .art { grid-column: 1 / -1; }
+.wel .art svg { width: 100%; height: auto; display: block; }
+.wel h1 { font-size: 34px; line-height: 1.08; letter-spacing: -.02em; margin: 0 0 12px; font-weight: 750; max-width: 15ch; }
+.wel .lead { font-size: 15.5px; color: var(--muted); margin: 0 0 22px; max-width: 46ch; line-height: 1.55; }
+.wel .acts { display: flex; flex-wrap: wrap; gap: 10px; }
+.wel .acts button { height: 40px; padding: 0 16px; font-size: 14.5px; border-radius: 9px; }
+.wel .drop { margin-top: 14px; color: var(--faint); font-size: 12.5px; }
+.wel ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: st; }
+.wel ol li { counter-increment: st; display: grid; grid-template-columns: 34px 1fr; gap: 2px 12px; }
+.wel ol li::before { content: counter(st); grid-row: span 2; width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--gold); color: var(--gold); display: grid; place-items: center; font-weight: 700; }
+.wel ol b { font-size: 14.5px; }
+.wel ol span { color: var(--muted); font-size: 13px; }
+.wel .recent { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 18px; }
+.wel .recent h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+
+/* sneltoetsen (?) */
+#keysDlg { max-width: 820px; width: calc(100vw - 40px); padding: 22px 26px 24px; background: var(--panel); color: var(--text); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 24px 60px rgba(4,6,12,.6); }
+#keysDlg::backdrop { background: rgba(8,10,16,.6); }
+#keysDlg header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+#keysDlg h2 { margin: 0; font-size: 18px; }
+#keysDlg .cols { columns: 2 300px; column-gap: 34px; }
+#keysDlg section { break-inside: avoid; margin-bottom: 16px; }
+#keysDlg h3 { font-size: 13px; color: var(--gold); margin: 0 0 6px; }
+#keysDlg dl { display: grid; grid-template-columns: max-content 1fr; gap: 5px 12px; margin: 0; font-size: 13px; }
+#keysDlg dt { white-space: nowrap; }
+#keysDlg dd { margin: 0; color: var(--muted); }
 
 #toast {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px);
-  background: #262b35; border: 1px solid #3a4150; padding: 8px 14px; border-radius: 8px;
-  opacity: 0; transition: .2s; pointer-events: none; z-index: 20; max-width: calc(100vw - 32px);
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(16px);
+  background: #262e41; border: 1px solid var(--line2); border-left: 3px solid var(--gold); padding: 10px 16px; border-radius: 9px;
+  opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; z-index: 20; max-width: min(720px, calc(100vw - 32px));
+  box-shadow: 0 12px 30px rgba(4,6,12,.5);
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #drop {
-  position: fixed; inset: 0; background: rgba(79,157,255,.15); border: 3px dashed var(--accent);
-  display: none; align-items: center; justify-content: center; font-size: 20px; z-index: 30; pointer-events: none;
+  position: fixed; inset: 10px; background: rgba(227,174,75,.09); border: 2px dashed var(--gold); border-radius: 16px;
+  display: none; align-items: center; justify-content: center; font-size: 20px; font-weight: 650; z-index: 30; pointer-events: none;
 }
 #drop.show { display: flex; }
-#busy { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 40; font-size: 15px; }
+#busy { position: fixed; inset: 0; background: rgba(8,10,16,.55); display: none; align-items: center; justify-content: center; z-index: 40; font-size: 15px; }
 #busy.show { display: flex; }
 
-@media (max-width: 640px) {
-  header.bar { padding: 8px 16px; }
+@media (max-width: 1400px) {
+  .montage .arrow, .montage button:not(.primary) kbd { display: none; }
+  .grp > button { padding: 0 8px; }
+  .toolbar { gap: 8px; }
+}
+@media (max-width: 760px) {
   .heads { width: 110px; }
-  .scrollrow { padding-left: 118px; }
+  .scrollrow { padding-left: 120px; }
+  .wel { grid-template-columns: 1fr; padding-top: 28px; }
+  .help { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
 }
 </style>
 </head>
 <body>
 <header class="bar">
-  <div class="brand"><strong>Take Crossfader</strong><span><button id="projName" class="linkish" title="Projecten openen, hernoemen of een nieuw project beginnen">Nog geen project</button> · <span id="saveState">wordt automatisch bewaard</span></span></div>
-  <div class="tools">
-    <span class="group" role="group" aria-label="Gereedschap" title="Gereedschap voor de EDIT- en take-banen">
-      <button class="tool" data-tool="move" title="Verplaatsen (1): slepen boven een clip verplaatst die clip">✥</button><button class="tool" data-tool="select" title="Selecteren (2): klikken selecteert, slepen selecteert een stuk; clips verschuiven niet">↖</button><button class="tool" data-tool="hand" title="Hand (3): slepen verschuift het beeld; clips verschuiven niet">✋</button></span>
-    <button id="projBtn" title="Bewaarde projecten openen, een nieuw project beginnen">Projecten</button>
-    <button id="importBtn" class="primary">Importeer takes</button>
-    <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus,.crossfader" hidden>
-    <input type="file" id="projFileInput" accept=".crossfader,application/octet-stream" hidden>
-    <button id="demoBtn" title="Genereer drie voorbeeld-takes om mee te oefenen">Demo</button>
-    <span class="sep"></span>
-    <button id="playBtn" title="Afspelen / stoppen (spatie)">▶</button>
-    <span id="clock" class="clock">0:00.000</span>
-    <label title="Na stoppen springt de afspeelkop terug naar waar je begon met afspelen"><input type="checkbox" id="rtsChk" checked> ↩ Terug naar start</label>
-    <span class="sep"></span>
-    <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button>
-    <span class="sep"></span>
-    <span class="group" title="Doelpunten in de edit, op de afspeelkop — ook tijdens het afspelen. Of sleep in de tijdbalk over het stuk dat je wilt vervangen.">Doel
-      <button id="destBtn" title="Doel in: hier begint de wissel (D)">◆ in</button><button id="destOutBtn" title="Doel uit: tot hier vervangen, daarna gaat de edit verder zoals hij was (⇧D)">uit ◆</button></span>
-    <button id="alignHereBtn" title="Alle takes zo verschuiven dat dezelfde passage onder de afspeelkop ligt (H). De edit blijft staan.">Takes hier uitlijnen</button>
-    <span class="group" title="Optioneel: zelf de plek in de take aanwijzen. Zonder bronpunten zoekt de editor de bijbehorende plek zelf.">Bron
-      <button id="srcBtn" title="Bron in, in de geselecteerde of solo spelende take (B)">◇ in</button><button id="srcOutBtn" title="Bron uit (⇧B)">uit ◇</button></span>
-    <button id="compBtn" title="Overnemen (E): het stuk tussen Doel in en uit vervangen — of met alleen Doel in: tot de volgende wissel. ⌥E: alles na Doel in vervangen. Of: een geselecteerd stuk uit een take in de edit plaatsen.">Overnemen</button>
-    <span class="sep"></span>
-    <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
-    <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
-    <button id="repairBtn" title="Bijgeluiden repareren (R): kuchje, tik, stoelgeschuif of verkeer wegwerken in het spectrogram van de geselecteerde clip of take">Repareer</button>
-    <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
-    <button id="undoBtn" title="Ongedaan maken (Ctrl/⌘+Z)">↶</button>
-    <button id="redoBtn" title="Opnieuw (Ctrl/⌘+Shift+Z)">↷</button>
-    <span class="sep"></span>
-    <button id="zoomOut" title="Uitzoomen (−)">−</button>
-    <button id="zoomIn" title="Inzoomen (+)">+</button>
-    <button id="zoomFit" title="Alles in beeld (F)">Passend</button>
-    <label title="Klikken aan clipranden en afspeelkop (Shift tijdens slepen schakelt tijdelijk uit)"><input type="checkbox" id="snapChk" checked> Snap</label>
-    <label title="Knippen (S) en weghalen schuiven het knippunt tot max. 5 ms op naar de dichtstbijzijnde nuldoorgang: geen tikjes"><input type="checkbox" id="zcChk" checked> Nuldoorgang</label>
-    <label title="Lengte van nieuwe crossfades bij 'Naar edit' en bij het wisselen van take">Std. crossfade <input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</label>
-    <span class="sep"></span>
-    <button id="exportBtn" title="Edit (of selectie) exporteren als WAV of MP3">Exporteer…</button>
-    <button id="manualBtn" title="Handleiding met werkwijzen en alle toetscombinaties (pdf)">Handleiding</button>
-    <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
+  <div class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="120" fill="#232a3b"/><g fill="none" stroke-linecap="round" stroke-width="34"><path d="M96 150 C 220 150, 292 362, 416 362" stroke="#5b8def"/><path d="M96 362 C 220 362, 292 150, 416 150" stroke="#e39b3b"/></g></svg>
+      <div class="bt">
+        <strong>Take Crossfader</strong>
+        <span class="sub"><button id="projName" title="Projecten openen, hernoemen of een nieuw project beginnen">Nog geen project</button><span id="saveState">wordt automatisch bewaard</span></span>
+      </div>
+    </div>
+    <div class="view">
+      <span class="grp" role="group" aria-label="Zoom">
+        <button id="zoomOut" title="Uitzoomen (−)" aria-label="Uitzoomen">−</button><button id="zoomIn" title="Inzoomen (+)" aria-label="Inzoomen">+</button><button id="zoomFit" title="Alles in beeld (F)">Passend</button></span>
+      <button id="setBtn" popovertarget="setPop" title="Instellingen: snap, nuldoorgang, standaard-crossfade, terug naar start" aria-label="Instellingen">⚙</button>
+    </div>
+    <div class="files">
+      <button id="demoBtn" class="ghost" title="Genereer vier voorbeeld-takes om mee te oefenen">Demo</button>
+      <button id="projBtn" class="ghost" title="Bewaarde projecten openen, een nieuw project beginnen">Projecten</button>
+      <button id="manualBtn" class="ghost" title="Handleiding met werkwijzen en alle toetscombinaties (pdf)">Handleiding</button>
+      <button id="keysBtn" class="ghost" title="Alle sneltoetsen (?)">Sneltoetsen <kbd>?</kbd></button>
+      <button id="installBtn" title="Installeer Take Crossfader als app op dit apparaat" hidden>Installeer app</button>
+      <button id="importBtn" title="Audiobestanden toevoegen als takes (of sleep ze in het venster)">Importeer takes</button>
+      <button id="exportBtn" title="Edit (of selectie) exporteren als WAV of MP3">Exporteer…</button>
+      <input type="file" id="fileInput" multiple accept="audio/*,.wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus,.crossfader" hidden>
+      <input type="file" id="projFileInput" accept=".crossfader,application/octet-stream" hidden>
+    </div>
+  </div>
+  <div class="toolbar">
+    <span class="grp" role="group" aria-label="Gereedschap" title="Wat slepen in de EDIT- en take-banen doet">
+      <button class="tool" data-tool="move" title="Verplaatsen (1): slepen boven een clip verplaatst die clip" aria-label="Verplaatsen">✥</button><button class="tool" data-tool="select" title="Selecteren (2): klikken selecteert, slepen selecteert een stuk; clips verschuiven niet" aria-label="Selecteren">↖</button><button class="tool" data-tool="hand" title="Hand (3): slepen verschuift het beeld; clips verschuiven niet" aria-label="Hand">✋</button></span>
+    <span class="grp" role="group" aria-label="Geschiedenis">
+      <button id="undoBtn" title="Ongedaan maken (⌘Z)" aria-label="Ongedaan maken">↶</button><button id="redoBtn" title="Opnieuw (⇧⌘Z)" aria-label="Opnieuw">↷</button></span>
+    <span class="transport">
+      <button id="playBtn" title="Afspelen / stoppen (spatie)" aria-label="Afspelen">▶</button>
+      <span id="clock" class="clock">0:00.000</span>
+    </span>
+    <span class="grp montage" role="group" aria-label="Montage" title="Van links naar rechts: doel in de edit, takes uitlijnen, eventueel bron in een take, overnemen">
+      <span class="lbl">Doel</span><button id="destBtn" title="Doel in: hier begint de wissel (D). Of sleep in de tijdbalk over het stuk dat je wilt vervangen.">◆ in <kbd>D</kbd></button><button id="destOutBtn" title="Doel uit: tot hier vervangen, daarna gaat de edit verder zoals hij was (⇧D)">uit ◆</button>
+      <span class="arrow">›</span>
+      <button id="alignHereBtn" title="Alle takes zo verschuiven dat dezelfde passage onder de afspeelkop ligt (H). De edit blijft staan.">Takes hier uitlijnen <kbd>H</kbd></button>
+      <span class="arrow">›</span>
+      <span class="lbl" title="Optioneel: zelf de plek in de take aanwijzen">Bron</span><button id="srcBtn" title="Bron in, in de geselecteerde of solo spelende take (B). Optioneel: zonder bronpunt zoekt de editor zelf.">◇ in</button><button id="srcOutBtn" title="Bron uit (⇧B)">uit ◇</button>
+      <span class="arrow">›</span>
+      <button id="compBtn" class="primary" title="Overnemen (E): het stuk tussen Doel in en uit vervangen — of met alleen Doel in: tot de volgende wissel. ⌥E: alles na Doel in vervangen. Of: een geselecteerd stuk uit een take in de edit plaatsen.">Overnemen <kbd>E</kbd></button>
+    </span>
+    <span class="grp" role="group" aria-label="Bewerken">
+      <button id="splitBtn" title="Knip de clip op de afspeelkop (S)">Knip</button><button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">Marker</button><button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button><span class="arrow" aria-hidden="true">·</span><button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button><button id="repairBtn" title="Bijgeluiden repareren (R): kuchje, tik, stoelgeschuif of verkeer wegwerken in het spectrogram van de geselecteerde clip of take">Repareer</button></span>
+  </div>
+  <div id="setPop" popover>
+    <h3>Instellingen</h3>
+    <label class="opt"><input type="checkbox" id="rtsChk" checked> Terug naar start<small>Na stoppen springt de afspeelkop terug naar waar je begon met afspelen.</small></label>
+    <label class="opt"><input type="checkbox" id="snapChk" checked> Snap<small>Clips klikken bij slepen vast aan randen en de afspeelkop. ⇧ tijdens slepen zet het tijdelijk uit.</small></label>
+    <label class="opt"><input type="checkbox" id="zcChk" checked> Nuldoorgang<small>Knippen en weghalen schuiven tot 5 ms op naar een nuldoorgang: geen tikjes.</small></label>
+    <label class="opt num">Standaard-crossfade <span><input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</span><small>Voor nieuwe wissels. 30–60 ms meestal; 10–30 ms voor één noot.</small></label>
   </div>
 </header>
 
@@ -207,7 +338,70 @@ kbd {
   </div>
   <div class="scrollrow"><input type="range" id="hscroll" min="0" max="1" step="0.001" value="0" aria-label="Horizontaal scrollen"></div>
   <section class="inspector" id="inspector"></section>
+  <section id="welcome" aria-label="Start">
+    <div class="wel">
+      <div class="art" id="welArt" aria-hidden="true"></div>
+      <div>
+        <h1>Eén uitvoering uit je beste takes</h1>
+        <p class="lead">Leg de opnames van hetzelfde stuk onder elkaar, kies per passage de mooiste en monteer ze met crossfades. Je opnames blijven onaangeroerd en alles blijft op deze computer.</p>
+        <div class="acts">
+          <button id="welImport" class="primary">Importeer takes</button>
+          <button id="welOpen">Open een project</button>
+          <button id="welDemo">Probeer de demo</button>
+        </div>
+        <p class="drop">Of sleep audiobestanden hierheen: wav, aiff, flac, mp3 of m4a.</p>
+      </div>
+      <ol>
+        <li><b>Importeer de takes</b><span>De eerste komt in de edit, alle takes staan eronder.</span></li>
+        <li><b>Kies per passage de beste take</b><span>Speel af en druk <kbd>D</kbd> op de noot, <kbd>H</kbd> om de takes uit te lijnen, klik een take en druk <kbd>E</kbd>.</span></li>
+        <li><b>Werk de overgangen af en exporteer</b><span>Crossfade, galmstaart en reparaties stel je onderaan in. Exporteer als WAV of MP3.</span></li>
+      </ol>
+      <div class="recent" id="welRecent" hidden></div>
+    </div>
+  </section>
 </main>
+<dialog id="keysDlg" aria-labelledby="keysTitle">
+  <header><h2 id="keysTitle" tabindex="-1" autofocus>Sneltoetsen</h2><button id="keysClose" class="ghost" aria-label="Sluiten">Sluiten <kbd>Esc</kbd></button></header>
+  <div class="cols">
+    <section><h3>Afspelen en navigeren</h3><dl>
+      <dt><kbd>Spatie</kbd></dt><dd>Afspelen / stoppen</dd>
+      <dt><kbd>L</kbd></dt><dd>Selectie of crossfade herhalen</dd>
+      <dt><kbd>A</kbd></dt><dd>Crossfade beluisteren</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Afspeelkop 1 s (<kbd>⇧</kbd> 0,1 s)</dd>
+      <dt><kbd>M</kbd></dt><dd>Marker zetten</dd>
+      <dt><kbd>,</kbd> <kbd>.</kbd></dt><dd>Vorige / volgende marker</dd>
+    </dl></section>
+    <section><h3>Montage</h3><dl>
+      <dt><kbd>D</kbd> <kbd>⇧D</kbd></dt><dd>Doel in / uit</dd>
+      <dt><kbd>H</kbd></dt><dd>Takes hier uitlijnen</dd>
+      <dt><kbd>B</kbd> <kbd>⇧B</kbd></dt><dd>Bron in / uit (optioneel)</dd>
+      <dt><kbd>E</kbd></dt><dd>Overnemen</dd>
+      <dt><kbd>⌥E</kbd></dt><dd>Overnemen, alles erna vervangen</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Punten en selectie wissen</dd>
+    </dl></section>
+    <section><h3>Bewerken</h3><dl>
+      <dt><kbd>S</kbd></dt><dd>Knippen op de afspeelkop</dd>
+      <dt><kbd>Delete</kbd></dt><dd>Selectie verwijderen (<kbd>⌥</kbd>: gat laten)</dd>
+      <dt><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></dt><dd>Ongedaan maken / opnieuw</dd>
+      <dt><kbd>⌘A</kbd></dt><dd>Alle clips selecteren</dd>
+      <dt><kbd>⌥←</kbd> <kbd>⌥→</kbd></dt><dd>Clips 10 ms verschuiven (<kbd>⇧</kbd> 1 s)</dd>
+      <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Verplaatsen · selecteren · hand</dd>
+    </dl></section>
+    <section><h3>Crossfade geselecteerd</h3><dl>
+      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Knippunt 1 ms (<kbd>⇧</kbd> 10 ms)</dd>
+      <dt><kbd>G</kbd></dt><dd>Galmstaart aan / uit</dd>
+    </dl></section>
+    <section><h3>Bijgeluiden</h3><dl>
+      <dt><kbd>R</kbd></dt><dd>Reparatievenster openen</dd>
+      <dt><kbd>X</kbd></dt><dd>Vergelijken met het origineel</dd>
+    </dl></section>
+    <section><h3>Beeld</h3><dl>
+      <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>In- en uitzoomen</dd>
+      <dt><kbd>F</kbd></dt><dd>Alles in beeld</dd>
+      <dt><kbd>?</kbd></dt><dd>Dit overzicht</dd>
+    </dl></section>
+  </div>
+</dialog>
 
 <div id="toast"></div>
 <div id="drop">Laat los om audiobestanden te importeren</div>
@@ -235,7 +429,10 @@ kbd {
 
 const $ = (id) => document.getElementById(id);
 const RULER = 26, EDIT_H = 150, TAKE_H = 76, TAIL_H = 30;
-const COLORS = ['#4f9dff', '#ff9f43', '#2ed573', '#e056fd', '#ffd32a', '#ff6b81', '#1dd1a1', '#a29bfe'];
+// Glas-in-lood: kobalt, amber, smaragd, robijn, violet, turkoois, roze, oker
+const COLORS = ['#5b8def', '#e39b3b', '#3fb27f', '#d95c7a', '#a67fe0', '#2fb5b3', '#e58bb8', '#c9b24a'];
+const OLD_COLORS = ['#4f9dff', '#ff9f43', '#2ed573', '#e056fd', '#ffd32a', '#ff6b81', '#1dd1a1', '#a29bfe'];
+const UI_FONT = '"Atkinson Hyperlegible Next", system-ui, sans-serif';
 const PEAK_BLOCK = 256;
 const MIN_DUR = 0.005;
 const SHAPES = {
@@ -1516,36 +1713,36 @@ function drawBase() {
   const W = cssW;
 
   // lanes
-  g.fillStyle = '#12151a'; g.fillRect(0, RULER, W, EDIT_H);
+  g.fillStyle = '#121722'; g.fillRect(0, RULER, W, EDIT_H);
   S.takes.forEach((t, k) => {
     const y = RULER + EDIT_H + k * TAKE_H;
-    g.fillStyle = S.sel && S.sel.kind === 'take' && S.sel.id === t.id ? '#1a1f28' : (k % 2 ? '#15181e' : '#171a20');
+    g.fillStyle = S.sel && S.sel.kind === 'take' && S.sel.id === t.id ? '#1e2537' : (k % 2 ? '#161b27' : '#181e2b');
     g.fillRect(0, y, W, TAKE_H);
   });
 
   // ruler + grid
-  g.fillStyle = '#1d2128'; g.fillRect(0, 0, W, RULER);
+  g.fillStyle = '#1b2130'; g.fillRect(0, 0, W, RULER);
   const step = tickStep(), minor = step / 5;
   const t0 = Math.floor(S.view / minor) * minor;
-  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  g.font = '10px ' + UI_FONT; g.textBaseline = 'top';
   for (let t = t0; t < tAt(W); t += minor) {
     const x = Math.round(px(t)) + 0.5;
     const major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
-    g.fillStyle = major ? '#5a6272' : '#363c47';
+    g.fillStyle = major ? '#5d6680' : '#384057';
     g.fillRect(x, major ? 12 : 19, 1, major ? 14 : 7);
     if (major) {
       g.fillStyle = 'rgba(255,255,255,0.035)'; g.fillRect(x, RULER, 1, cssH - RULER);
-      g.fillStyle = '#8b93a1';
+      g.fillStyle = '#9aa1b3';
       g.fillText(fmt(Math.abs(t) < 1e-9 ? 0 : t, step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0), x + 3, 2);
     }
   }
-  g.fillStyle = '#2a2f38'; g.fillRect(0, RULER - 1, W, 1); g.fillRect(0, RULER + EDIT_H - 1, W, 1);
+  g.fillStyle = '#2f374b'; g.fillRect(0, RULER - 1, W, 1); g.fillRect(0, RULER + EDIT_H - 1, W, 1);
 
   // edit lane
   const env = envelopes(), selIds = selClipIds();
   const y = RULER + 6, h = EDIT_H - 12;
   if (!S.clips.length) {
-    g.fillStyle = '#5a6272'; g.font = '13px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillStyle = '#5d6680'; g.font = '13px ' + UI_FONT; g.textBaseline = 'middle';
     g.fillText(S.takes.length ? 'Edit is leeg — selecteer een stuk in een take hieronder en druk E' : 'Sleep audiobestanden hierheen, of klik op "Importeer takes" (of "Demo")', 16, RULER + EDIT_H / 2);
   }
   S.clips.forEach((c, i) => {
@@ -1557,7 +1754,7 @@ function drawBase() {
     g.fillStyle = hexA(tk.color, sel ? 0.75 : 0.5); g.fillRect(x0, y, x1 - x0, 15);
     g.save();
     g.beginPath(); g.rect(x0, y, x1 - x0, h); g.clip();
-    g.fillStyle = '#fff'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillStyle = '#fff'; g.font = '11px ' + UI_FONT; g.textBaseline = 'middle';
     g.fillText(tk.name + (c.gain ? `  ${c.gain > 0 ? '+' : ''}${c.gain.toFixed(1)} dB` : ''), Math.max(x0, 0) + 5, y + 8);
     g.fillStyle = tk.color;
     const mid = y + 15 + (h - 15) / 2, hh = (h - 15) / 2 - 3;
@@ -1608,10 +1805,10 @@ function drawBase() {
     }
     // vlinder-handvat onderaan
     const cx = (xs + xe) / 2, by = y + h - 9;
-    g.fillStyle = sel ? '#fff' : '#c9ced8';
+    g.fillStyle = sel ? '#fff' : '#d5d0c4';
     g.beginPath(); g.moveTo(cx - 6, by - 5); g.lineTo(cx + 6, by + 5); g.lineTo(cx + 6, by - 5); g.lineTo(cx - 6, by + 5); g.closePath(); g.fill();
     if (sel || xe - xs > 46) {
-      g.font = '10px system-ui, sans-serif'; g.textBaseline = 'bottom'; g.textAlign = 'center';
+      g.font = '10px ' + UI_FONT; g.textBaseline = 'bottom'; g.textAlign = 'center';
       g.fillStyle = '#fff'; g.fillText(`${ms(j.len)} ms`, cx, by - 7);
       g.textAlign = 'left';
     }
@@ -1635,10 +1832,10 @@ function drawBase() {
       xx === Math.max(xa, 0) ? g.moveTo(xx, yy) : g.lineTo(xx, yy);
     }
     g.stroke(); g.setLineDash([]);
-    g.fillStyle = sel ? '#fff' : '#c9ced8';                      // handvat: sleep om de lengte te veranderen
+    g.fillStyle = sel ? '#fff' : '#d5d0c4';                      // handvat: sleep om de lengte te veranderen
     g.fillRect(Math.round(xb) - 1.5, by, 3, TAIL_H);
     if (xb - xE > 70) {
-      g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top'; g.textAlign = 'right';
+      g.font = '10px ' + UI_FONT; g.textBaseline = 'top'; g.textAlign = 'right';
       g.fillText(`${L.donor ? 'donor-galm' : 'galm'} ${(L.L1 - L.E).toFixed(1)} s`, xb - 5, by + 2);
       g.textAlign = 'left';
     }
@@ -1664,7 +1861,7 @@ function drawBase() {
       for (const r of t.repairs || []) {                        // reparaties: groen streepje onderin
         const a = px(t.sync + r.t0), b = px(t.sync + r.t1);
         if (b < 0 || a > W) continue;
-        g.fillStyle = r.on && !S.bypass ? '#1dd1a1' : '#6b7382';
+        g.fillStyle = r.on && !S.bypass ? '#4fbf9a' : '#6e7690';
         g.fillRect(Math.round(a) - 1, y0 + TAKE_H - 10, Math.max(3, b - a + 2), 5);
       }
     }
@@ -1673,10 +1870,10 @@ function drawBase() {
       g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(a, y0 + 2, b - a, TAKE_H - 4);
       g.fillStyle = '#fff'; g.fillRect(a, y0 + 2, 1, TAKE_H - 4); g.fillRect(b - 1, y0 + 2, 1, TAKE_H - 4);
     }
-    g.fillStyle = '#2a2f38'; g.fillRect(0, y0 + TAKE_H - 1, W, 1);
+    g.fillStyle = '#2f374b'; g.fillRect(0, y0 + TAKE_H - 1, W, 1);
   });
   if (!S.takes.length) {
-    g.fillStyle = '#4a5160'; g.font = '12px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillStyle = '#4e5670'; g.font = '12px ' + UI_FONT; g.textBaseline = 'middle';
     g.fillText('Hier verschijnen je takes', 16, RULER + EDIT_H + TAKE_H / 2);
   }
 
@@ -1686,27 +1883,27 @@ function drawBase() {
     const x = Math.round(px(mk.t)) + 0.5;
     if (x < -200 || x > W + 10) return;
     const sel = S.sel && S.sel.kind === 'marker' && S.sel.id === mk.id;
-    const col = sel ? '#ffffff' : '#1dd1a1';
-    g.strokeStyle = sel ? 'rgba(255,255,255,0.7)' : 'rgba(29,209,161,0.55)'; g.lineWidth = 1;
+    const col = sel ? '#ffffff' : '#4fbf9a';
+    g.strokeStyle = sel ? 'rgba(255,255,255,0.7)' : 'rgba(79,191,154,0.55)'; g.lineWidth = 1;
     g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x, RULER); g.lineTo(x, RULER + EDIT_H); g.stroke(); g.setLineDash([]);
     const label = `${i + 1}${mk.text ? ' ' + mk.text : ''}`;
-    g.font = '10px system-ui, sans-serif';
+    g.font = '10px ' + UI_FONT;
     const next = sorted[i + 1];
     const room = next ? Math.max(14, px(next.t) - x - 4) : 220;
     let txt = label;
     while (txt.length > 1 && g.measureText(txt).width + 8 > room) txt = txt.slice(0, -2) + '…';
     const w = g.measureText(txt).width + 8;
     g.fillStyle = col; g.fillRect(x, 1, w, 13);
-    g.fillStyle = '#0f1115'; g.textBaseline = 'middle'; g.fillText(txt, x + 4, 8);
+    g.fillStyle = '#141925'; g.textBaseline = 'middle'; g.fillText(txt, x + 4, 8);
     g.fillStyle = col; g.fillRect(x - 0.5, 1, 1.5, RULER - 1);
   });
 
   // selectie in de edit (liniaal of Shift+slepen)
   if (S.sel && S.sel.kind === 'erange') {
     const a = px(Math.min(S.sel.t0, S.sel.t1)), b = px(Math.max(S.sel.t0, S.sel.t1));
-    g.fillStyle = 'rgba(255,211,42,0.16)'; g.fillRect(a, y, b - a, h);
-    g.fillStyle = 'rgba(255,211,42,0.55)'; g.fillRect(a, 0, b - a, RULER - 1);
-    g.fillStyle = '#ffd32a'; g.fillRect(a, 0, 1, RULER + EDIT_H); g.fillRect(b - 1, 0, 1, RULER + EDIT_H);
+    g.fillStyle = 'rgba(227,174,75,0.16)'; g.fillRect(a, y, b - a, h);
+    g.fillStyle = 'rgba(227,174,75,0.55)'; g.fillRect(a, 0, b - a, RULER - 1);
+    g.fillStyle = '#e3ae4b'; g.fillRect(a, 0, 1, RULER + EDIT_H); g.fillRect(b - 1, 0, 1, RULER + EDIT_H);
   }
 
   // geselecteerd leeg stuk
@@ -1714,10 +1911,10 @@ function drawBase() {
     const gp = gapAt(S.sel.t);
     if (gp) {
       const a = px(gp.a), b = px(gp.b);
-      g.fillStyle = 'rgba(255,92,108,0.10)'; g.fillRect(a, y, b - a, h);
-      g.setLineDash([5, 4]); g.strokeStyle = 'rgba(255,92,108,0.8)'; g.lineWidth = 1;
+      g.fillStyle = 'rgba(239,91,76,0.10)'; g.fillRect(a, y, b - a, h);
+      g.setLineDash([5, 4]); g.strokeStyle = 'rgba(239,91,76,0.8)'; g.lineWidth = 1;
       g.strokeRect(a + 0.5, y + 0.5, Math.max(1, b - a - 1), h - 1); g.setLineDash([]);
-      g.fillStyle = '#ff9aa5'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'center';
+      g.fillStyle = '#f59a8e'; g.font = '11px ' + UI_FONT; g.textBaseline = 'middle'; g.textAlign = 'center';
       g.fillText(`stilte ${fmt(gp.b - gp.a, 1)} — Delete of "Gat dichten" schuift alles erna op`, clamp((Math.max(a, 0) + Math.min(b, cssW)) / 2, 160, cssW - 160), y + h / 2);
       g.textAlign = 'left';
     }
@@ -1725,20 +1922,20 @@ function drawBase() {
 
   // doel- en bronpunten
   const flag = (x, y, txt) => {
-    g.font = 'bold 10px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.font = 'bold 10px ' + UI_FONT; g.textBaseline = 'middle';
     const w = g.measureText(txt).width + 6;
-    g.fillStyle = '#0f1115'; g.fillRect(x + 3, y, w, 13); g.fillStyle = '#ffd32a'; g.fillText(txt, x + 6, y + 7);
+    g.fillStyle = '#141925'; g.fillRect(x + 3, y, w, 13); g.fillStyle = '#e3ae4b'; g.fillText(txt, x + 6, y + 7);
   };
   const P = S.pts;
   if (P.dest != null) {
     const x = Math.round(px(P.dest)) + 0.5;
     if (P.destOut != null) {
       const x2 = Math.round(px(P.destOut)) + 0.5;
-      g.fillStyle = 'rgba(255,211,42,0.13)'; g.fillRect(x, RULER, x2 - x, EDIT_H);
-      g.fillStyle = '#ffd32a'; g.fillRect(x2 - 1, RULER, 2, EDIT_H);
+      g.fillStyle = 'rgba(227,174,75,0.13)'; g.fillRect(x, RULER, x2 - x, EDIT_H);
+      g.fillStyle = '#e3ae4b'; g.fillRect(x2 - 1, RULER, 2, EDIT_H);
       flag(x2, RULER + 2, 'D uit');
     }
-    g.fillStyle = '#ffd32a'; g.fillRect(x - 1, RULER, 2, EDIT_H);
+    g.fillStyle = '#e3ae4b'; g.fillRect(x - 1, RULER, 2, EDIT_H);
     g.beginPath(); g.moveTo(x - 7, RULER + EDIT_H - 1); g.lineTo(x + 7, RULER + EDIT_H - 1); g.lineTo(x, RULER + EDIT_H - 10); g.closePath(); g.fill();
     flag(x, RULER + 2, P.destOut != null ? 'D in' : 'D');
   }
@@ -1748,11 +1945,11 @@ function drawBase() {
       const tk = S.takes[k], y0 = RULER + EDIT_H + k * TAKE_H, x = Math.round(px(tk.sync + P.src.s)) + 0.5;
       if (P.srcOut != null) {
         const x2 = Math.round(px(tk.sync + P.srcOut)) + 0.5;
-        g.fillStyle = 'rgba(255,211,42,0.13)'; g.fillRect(x, y0 + 2, x2 - x, TAKE_H - 4);
-        g.fillStyle = '#ffd32a'; g.fillRect(x2 - 1, y0 + 2, 2, TAKE_H - 4);
+        g.fillStyle = 'rgba(227,174,75,0.13)'; g.fillRect(x, y0 + 2, x2 - x, TAKE_H - 4);
+        g.fillStyle = '#e3ae4b'; g.fillRect(x2 - 1, y0 + 2, 2, TAKE_H - 4);
         flag(x2, y0 + 4, 'B uit');
       }
-      g.fillStyle = '#ffd32a'; g.fillRect(x - 1, y0 + 2, 2, TAKE_H - 4);
+      g.fillStyle = '#e3ae4b'; g.fillRect(x - 1, y0 + 2, 2, TAKE_H - 4);
       flag(x, y0 + 4, P.srcOut != null ? 'B in' : 'B');
     }
   }
@@ -1801,7 +1998,7 @@ function frame() {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const x = Math.round(px(S.playhead)) + 0.5;
   if (x >= 0 && x <= cssW) {
-    g.fillStyle = 'rgba(255,92,108,0.95)';
+    g.fillStyle = 'rgba(239,91,76,0.95)';
     g.fillRect(x - 0.5, 0, 1.5, cssH);
     g.beginPath(); g.moveTo(x - 6, 0); g.lineTo(x + 6, 0); g.lineTo(x, 8); g.closePath(); g.fill();
   }
@@ -1819,7 +2016,8 @@ function drawMeter() {
   g.clearRect(0, 0, w, h);
   const db = S.meter > 0 ? 20 * Math.log10(S.meter) : -100;
   const f = clamp((db + 48) / 48, 0, 1);
-  g.fillStyle = db > -0.5 ? '#ff5c6c' : db > -6 ? '#ffd32a' : '#2ed573';
+  g.fillStyle = '#10141e'; g.fillRect(0, 0, w, h);
+  g.fillStyle = db > -0.5 ? '#ef5b4c' : db > -6 ? '#e3ae4b' : '#4fbf9a';
   g.fillRect(0, 0, w * f, h);
 }
 
@@ -1866,7 +2064,7 @@ function drawXf() {
       x ? g.lineTo(x, yy) : g.moveTo(x, yy);
     }
     g.stroke();
-    g.fillStyle = '#c9ced8'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'top';
+    g.fillStyle = '#d5d0c4'; g.font = '11px ' + UI_FONT; g.textBaseline = 'top';
     g.fillText(r.label, 6, y + 2);
   });
   // mix
@@ -1874,23 +2072,23 @@ function drawXf() {
   const sr = Math.min(48000, (S.ac && S.ac.sampleRate) || 48000);
   const mix = renderMono(t0, t0 + W * spx, sr);
   const per = mix.length / W;
-  g.fillStyle = '#e6e8ec';
+  g.fillStyle = '#ece6d8';
   for (let x = 0; x < W; x++) {
     let lo = 0, hi = 0;
     const a = Math.floor(x * per), b = Math.max(a + 1, Math.floor((x + 1) * per));
     for (let k = a; k < b && k < mix.length; k++) { const v = mix[k]; if (v < lo) lo = v; if (v > hi) hi = v; }
     g.fillRect(x, mid - clamp(hi, -1, 1) * hh, 1, Math.max(1, (clamp(hi, -1, 1) - clamp(lo, -1, 1)) * hh));
   }
-  g.fillStyle = '#c9ced8'; g.fillText('Resultaat', 6, y + 2);
+  g.fillStyle = '#d5d0c4'; g.fillText('Resultaat', 6, y + 2);
   // lijnen
   g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(0, 4 + rowH, W, 1); g.fillRect(0, 4 + 2 * rowH, W, 1);
-  g.fillStyle = '#ffd32a';
+  g.fillStyle = '#e3ae4b';
   g.fillRect(Math.round(xOf((j.s + j.e) / 2)), 0, 1, H);
   g.fillStyle = 'rgba(255,255,255,0.5)';
   g.fillRect(Math.round(xs), 0, 1, H); g.fillRect(Math.round(xe), 0, 1, H);
   const ph = xOf(S.playhead);
-  if (ph >= 0 && ph <= W) { g.fillStyle = '#ff5c6c'; g.fillRect(Math.round(ph), 0, 1, H); }
-  g.fillStyle = '#8b93a1'; g.textAlign = 'right'; g.textBaseline = 'bottom';
+  if (ph >= 0 && ph <= W) { g.fillStyle = '#ef5b4c'; g.fillRect(Math.round(ph), 0, 1, H); }
+  g.fillStyle = '#9aa1b3'; g.textAlign = 'right'; g.textBaseline = 'bottom';
   g.fillText(`venster ${Math.round(W * spx * 1000)} ms`, W - 6, H - 3);
   g.textAlign = 'left';
 }
@@ -1899,17 +2097,18 @@ function drawXf() {
 function buildHeads() {
   const el = $('heads');
   let html = `<div class="head ruler" style="height:${RULER}px">${S.takes.length ? 'tijd' : ''}</div>`;
-  html += `<div class="head edit" style="height:${EDIT_H}px"><strong>EDIT</strong><span class="meta">${S.clips.length} clip${S.clips.length === 1 ? '' : 's'} · ${fmt(editEnd(), 1)}</span><canvas id="meter"></canvas></div>`;
+  html += `<div class="head edit" style="height:${EDIT_H}px"><strong>Edit</strong><span class="meta">${S.clips.length} clip${S.clips.length === 1 ? '' : 's'} · ${fmt(editEnd(), 1)}</span><canvas id="meter"></canvas></div>`;
   S.takes.forEach((t) => {
     const sel = S.sel && S.sel.kind === 'take' && S.sel.id === t.id;
     const playing = S.playing && S.playing.mode === 'take' && S.playing.takeId === t.id;
-    html += `<div class="head take${sel ? ' sel' : ''}" data-take="${t.id}" style="height:${TAKE_H}px">
+    html += `<div class="head take${sel ? ' sel' : ''}" data-take="${t.id}" style="height:${TAKE_H}px;--c:${t.color}">
       <div class="name"><span class="sw" style="background:${t.color}"></span><span title="${esc(t.name)}">${esc(t.name)}</span></div>
-      <div class="meta"><button data-solo="${t.id}" title="Speel deze take vanaf de afspeelkop">${playing ? '■' : '▶'} solo</button><span>${fmt(t.buffer.duration, 1)}</span></div>
+      <div class="meta"><button data-solo="${t.id}" title="Speel deze take vanaf de afspeelkop">${playing ? '■ stop' : '▶ solo'}</button><span>${fmt(t.buffer.duration, 1)}</span></div>
     </div>`;
   });
   if (!S.takes.length) html += `<div class="head placeholder" style="height:${TAKE_H}px">Takes</div>`;
   el.innerHTML = html;
+  setEmpty(!S.takes.length && !(S.sel && S.sel.kind === 'projects'));   // projectenlijst mag over het startscherm
   resize();
 }
 
@@ -2010,6 +2209,7 @@ function renderInspector() {
     }
   }
   el.innerHTML = `<div class="help">
+    <div>
     <h2>Zo werkt het</h2>
     <ol>
       <li><b>Importeer je takes</b> (wav, aiff, flac, mp3, m4a…), of sleep ze in het venster. De eerste take komt meteen in de <b>edit</b> (bovenste baan); alle takes staan eronder.</li>
@@ -2023,35 +2223,19 @@ function renderInspector() {
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
       <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen ga je verder waar je was; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
     </ol>
-    <p><b>Uitgebreide handleiding</b> met werkwijzen per situatie en alle toetscombinaties: <a href="handleiding.pdf" target="_blank" style="color:var(--accent)">handleiding.pdf</a> (ook via de knop <i>Handleiding</i> in de werkbalk).</p>
+    <p>Uitgebreide werkwijzen per situatie staan in de <a href="handleiding.pdf" target="_blank">handleiding</a>.</p>
+    </div>
+    <div>
+    <h2>Meest gebruikte toetsen</h2>
     <div class="keys">
-      <span><kbd>Spatie</kbd> afspelen / stoppen</span>
-      <span><kbd>S</kbd> knippen op afspeelkop</span>
-      <span><kbd>D</kbd> / <kbd>⇧D</kbd> doel in/uit · <kbd>B</kbd> / <kbd>⇧B</kbd> bron in/uit · <kbd>E</kbd> overnemen</span>
-      <span><kbd>H</kbd> takes hier uitlijnen</span>
-      <span><kbd>A</kbd> crossfade beluisteren · <kbd>G</kbd> galmstaart aan/uit</span>
-      <span><kbd>Delete</kbd> clip verwijderen</span>
-      <span><kbd>←</kbd> <kbd>→</kbd> knip ±1 ms (Shift ±10 ms)</span>
-      <span><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> ongedaan maken</span>
-      <span><kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
-      <span>Zoomen: knijp op het trackpad, ⌘ + twee vingers omhoog/omlaag, of <kbd>+</kbd> <kbd>−</kbd></span>
-      <span>Beeld schuiven: veeg met twee vingers naar links/rechts, of sleep een leeg stuk van de EDIT-baan</span>
-      <span>Stuk weghalen: sleep in de tijdbalk bovenaan (of Shift + sleep in de edit) en druk <kbd>Delete</kbd></span>
-      <span>Clip slepen: verplaatsen, vervangt wat eronder ligt</span>
-      <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + clip slepen: invoegen, de rest schuift op</span>
-      <span>Clipranden slepen: trimmen</span>
-      <span><kbd>1</kbd> ✥ verplaatsen · <kbd>2</kbd> ↖ selecteren · <kbd>3</kbd> ✋ hand</span>
-      <span><kbd>⌘A</kbd> alle clips · <kbd>⇧</kbd>-klik reeks · <kbd>⌘</kbd>-klik losse clip</span>
-      <span><kbd>⌥</kbd><kbd>←</kbd> <kbd>→</kbd> selectie 10 ms verschuiven (<kbd>⇧</kbd>: 1 s)</span>
-      <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
-      <span><kbd>R</kbd> bijgeluiden repareren · <kbd>X</kbd> met/zonder reparaties</span>
-      <span><kbd>M</kbd> marker zetten · <kbd>,</kbd> <kbd>.</kbd> vorige/volgende marker</span>
-      <span><kbd>L</kbd> geselecteerd stuk of crossfade herhalen</span>
-      <span><b>Uitlijnen</b> (werkbalk): twee takes tot op de sample t.o.v. elkaar verschuiven</span>
-      <span>Klik op stilte in de edit + <kbd>Delete</kbd>: gat dichten, alles erna schuift op</span>
-      <span>Alt + clip slepen: inhoud verschuiven (slip)</span>
-      <span>Crossfade slepen: knip verschuiven</span>
-      <span>Alt + crossfade slepen: lengte</span>
+      <span><kbd>Spatie</kbd> afspelen of stoppen · <kbd>L</kbd> stuk herhalen</span>
+      <span><kbd>D</kbd> doel op de noot · <kbd>H</kbd> takes hier uitlijnen · <kbd>E</kbd> overnemen</span>
+      <span><kbd>A</kbd> crossfade beluisteren · <kbd>G</kbd> galmstaart</span>
+      <span><kbd>R</kbd> bijgeluiden repareren · <kbd>X</kbd> vergelijken met origineel</span>
+      <span><kbd>S</kbd> knippen · <kbd>M</kbd> marker · <kbd>Delete</kbd> verwijderen</span>
+      <span><kbd>⌘Z</kbd> ongedaan maken · <kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
+      <span>Alle sneltoetsen en muisbewegingen: <kbd>?</kbd></span>
+    </div>
     </div>
   </div>`;
 }
@@ -2876,15 +3060,15 @@ function drawAlign() {
   const raw = 90 * s.spx, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 5, 10].map((m) => m * p10).find((v) => v >= raw);
   const dec = clamp(Math.ceil(-Math.log10(step)), 0, 6);
-  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  g.font = '10px ' + UI_FONT; g.textBaseline = 'top';
   for (let t = Math.ceil(s.t0 / step) * step; t < s.t0 + W * s.spx; t += step) {
     const x = Math.round(xOf(t)) + 0.5;
     g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(x, AL.RULER, 1, H - AL.RULER);
-    g.fillStyle = '#8b93a1'; g.fillText(fmt(t, Math.max(3, dec)), x + 3, 3);
+    g.fillStyle = '#9aa1b3'; g.fillText(fmt(t, Math.max(3, dec)), x + 3, 3);
   }
   const rows = [[R.a, AL.ROW, 'A · ' + A.take.name, A], [R.b, AL.ROW, 'B · ' + B.take.name, B], [R.o, AL.OVER, 'A + B over elkaar', null]];
   for (const [y, h, label, src] of rows) {
-    g.fillStyle = '#14171c'; g.fillRect(0, y, W, h);
+    g.fillStyle = '#171c28'; g.fillRect(0, y, W, h);
     g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, y + h / 2, W, 1);
     if (src && src.clip) {                                   // buiten de clip: gedimd
       g.fillStyle = 'rgba(255,255,255,0.05)';
@@ -2896,17 +3080,17 @@ function drawAlign() {
       drawAlignTrack(g, A, y, h, W, s, A.take.color, 0.75);
       drawAlignTrack(g, B, y, h, W, s, B.take.color === A.take.color ? '#ffffff' : B.take.color, 0.75);
     }
-    g.fillStyle = '#c9ced8'; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'top';
+    g.fillStyle = '#d5d0c4'; g.font = '11px ' + UI_FONT; g.textBaseline = 'top';
     g.fillText(label, 6, y + 4);
   }
   if (s.mode === 'clips') {
     const j = junctionOf(s.a, s.b);
-    if (j) { g.fillStyle = 'rgba(255,211,42,0.7)'; g.fillRect(Math.round(xOf(j.s)), AL.RULER, 1, H); g.fillRect(Math.round(xOf(j.e)), AL.RULER, 1, H); }
+    if (j) { g.fillStyle = 'rgba(227,174,75,0.7)'; g.fillRect(Math.round(xOf(j.s)), AL.RULER, 1, H); g.fillRect(Math.round(xOf(j.e)), AL.RULER, 1, H); }
   }
   const ph = xOf(S.playhead);
-  if (ph >= 0 && ph <= W) { g.fillStyle = '#ff5c6c'; g.fillRect(Math.round(ph), 0, 1.5, H); }
+  if (ph >= 0 && ph <= W) { g.fillStyle = '#ef5b4c'; g.fillRect(Math.round(ph), 0, 1.5, H); }
   const sr = A.take.buffer.sampleRate;
-  g.fillStyle = '#8b93a1'; g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = '10px system-ui, sans-serif';
+  g.fillStyle = '#9aa1b3'; g.textAlign = 'right'; g.textBaseline = 'bottom'; g.font = '10px ' + UI_FONT;
   const span = W * s.spx;
   g.fillText(`beeld ${span < 1 ? (span * 1000).toFixed(span < 0.01 ? 2 : 0) + ' ms' : span.toFixed(2) + ' s'} · ${(1 / (s.spx * sr)).toFixed(s.spx * sr < 1 ? 1 : 3)} px per sample`, W - 6, H - 4);
   g.textAlign = 'left';
@@ -3438,7 +3622,7 @@ function drawRepair(fast) {
   g.imageSmoothingEnabled = rc.spx !== s.spx;
   g.drawImage(rc.img, (rc.t0 - s.t0) / s.spx, yS, (rc.W * rc.spx) / s.spx, REP.SPEC);
   // golfvorm
-  g.fillStyle = '#14171c'; g.fillRect(0, REP.RULER, W, REP.WAVE);
+  g.fillStyle = '#171c28'; g.fillRect(0, REP.RULER, W, REP.WAVE);
   g.fillStyle = take.color;
   drawWave(g, take, 0, Math.max(0, xOf(0)), Math.min(W, xOf(dur)), (x) => s.t0 + x * s.spx, s.spx, REP.RULER + REP.WAVE / 2, REP.WAVE / 2 - 3, null);
   // buiten het deel dat in de edit klinkt: gedimd
@@ -3449,11 +3633,11 @@ function drawRepair(fast) {
   // liniaal
   const raw = 90 * s.spx, p10 = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 5, 10].map((m) => m * p10).find((v) => v >= raw);
   const dec = clamp(Math.ceil(-Math.log10(step)), 0, 4);
-  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  g.font = '10px ' + UI_FONT; g.textBaseline = 'top';
   for (let t = Math.ceil(s.t0 / step) * step; t < s.t0 + W * s.spx; t += step) {
     const x = Math.round(xOf(t)) + 0.5;
     g.fillStyle = 'rgba(255,255,255,0.07)'; g.fillRect(x, REP.RULER, 1, H - REP.RULER);
-    g.fillStyle = '#8b93a1'; g.fillText(fmt(t, Math.max(1, dec)), x + 3, 3);
+    g.fillStyle = '#9aa1b3'; g.fillText(fmt(t, Math.max(1, dec)), x + 3, 3);
   }
   g.textAlign = 'right'; g.textBaseline = 'middle';
   for (const f of [100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
@@ -3467,14 +3651,14 @@ function drawRepair(fast) {
   for (const r of take.repairs || []) {
     const xa = xOf(r.t0), xb = xOf(r.t1);
     if (xb < -2 || xa > W + 2) continue;
-    const cur = r.id === s.cur, col = r.on && !S.bypass ? '#1dd1a1' : '#8b93a1';
+    const cur = r.id === s.cur, col = r.on && !S.bypass ? '#4fbf9a' : '#9aa1b3';
     if (r.kind === 'click') {
       const x = Math.round((xa + xb) / 2);
       g.fillStyle = col; g.fillRect(x - (cur ? 1 : 0.5), REP.RULER, cur ? 2.5 : 1.5, H - REP.RULER);
       g.beginPath(); g.moveTo(x - 5, REP.RULER); g.lineTo(x + 5, REP.RULER); g.lineTo(x, REP.RULER + 7); g.closePath(); g.fill();
     } else {
       const ya = repFy(r.f1, fmax), yb = r.f0 <= 0 ? H : repFy(r.f0, fmax);
-      if (cur) { g.fillStyle = 'rgba(29,209,161,0.14)'; g.fillRect(xa, ya, Math.max(2, xb - xa), yb - ya); }
+      if (cur) { g.fillStyle = 'rgba(79,191,154,0.14)'; g.fillRect(xa, ya, Math.max(2, xb - xa), yb - ya); }
       g.strokeStyle = col; g.lineWidth = cur ? 2 : 1;
       g.strokeRect(xa + 0.5, ya + 0.5, Math.max(2, xb - xa), yb - ya - 1);
       g.fillStyle = col; g.fillRect(xa, REP.RULER, Math.max(2, xb - xa), 3);
@@ -3484,9 +3668,9 @@ function drawRepair(fast) {
   for (const k of s.clicks || []) {
     const x = Math.round(xOf((k.t0 + k.t1) / 2));
     if (x < 0 || x > W) continue;
-    g.strokeStyle = '#ff9f43'; g.lineWidth = 1; g.setLineDash([3, 3]);
+    g.strokeStyle = '#e8893a'; g.lineWidth = 1; g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(x + 0.5, REP.RULER); g.lineTo(x + 0.5, H); g.stroke(); g.setLineDash([]);
-    g.fillStyle = '#ff9f43'; g.beginPath(); g.moveTo(x - 5, REP.RULER); g.lineTo(x + 5, REP.RULER); g.lineTo(x, REP.RULER + 7); g.closePath(); g.fill();
+    g.fillStyle = '#e8893a'; g.beginPath(); g.moveTo(x - 5, REP.RULER); g.lineTo(x + 5, REP.RULER); g.lineTo(x, REP.RULER + 7); g.closePath(); g.fill();
   }
   // aangewezen gebied
   if (s.box) {
@@ -3498,9 +3682,9 @@ function drawRepair(fast) {
   }
   const pp = repPlayPos(s);
   const cx = xOf(pp == null ? s.pos : pp);
-  if (cx >= 0 && cx <= W) { g.fillStyle = pp == null ? '#ffd32a' : '#ff5c6c'; g.fillRect(Math.round(cx), 0, pp == null ? 1 : 1.5, H); }
+  if (cx >= 0 && cx <= W) { g.fillStyle = pp == null ? '#e3ae4b' : '#ef5b4c'; g.fillRect(Math.round(cx), 0, pp == null ? 1 : 1.5, H); }
   const span = W * s.spx;
-  g.fillStyle = '#c9ced8'; g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
+  g.fillStyle = '#d5d0c4'; g.font = '10px ' + UI_FONT; g.textBaseline = 'top';
   g.fillText(`${take.name} · beeld ${span < 1 ? Math.round(span * 1000) + ' ms' : span.toFixed(1) + ' s'}${S.bypass ? ' · ORIGINEEL (reparaties uit)' : ''}`, 6, REP.RULER + 3);
 }
 
@@ -4120,6 +4304,8 @@ $('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.val
 
 document.addEventListener('keydown', (e) => {
   const k = e.key, mod = e.ctrlKey || e.metaKey;
+  if ($('keysDlg').open) return;                                  // sneltoetsenoverzicht open: Esc sluit het
+  if (k === '?' && !e.target.matches('input[type=text], input[type=number], textarea')) { e.preventDefault(); showKeys(); return; }
   // ⌥E geeft op een Mac een accentteken; herken de toets daarom aan zijn plek
   if (e.code === 'KeyE' && e.altKey && !mod && !e.target.matches('input, select, textarea')) { e.preventDefault(); editAction(true); return; }
   // ⌘Z / Ctrl+Z werkt overal, ook als de cursor nog in een getalveld staat (alleen in een tekstveld niet).
@@ -4303,7 +4489,7 @@ const store = {
   set(k, v) { try { v == null ? localStorage.removeItem('tcf.' + k) : localStorage.setItem('tcf.' + k, v); } catch (_) { /* geen opslag */ } },
 };
 
-function setSaveState(text) { $('saveState').textContent = text; }
+function setSaveState(text) { $('saveState').textContent = text; $('saveState').classList.toggle('bad', /NIET/.test(text)); }
 function updateProjectLine() {
   $('projName').textContent = S.project ? S.project.name : 'Nog geen project';
 }
@@ -4352,7 +4538,7 @@ async function saveProject() {
       if (first) toast(`Project "${p.name}" wordt vanaf nu automatisch bewaard`);
     } catch (err) {
       console.error(err);
-      setSaveState('NIET bewaard');
+      setSaveState('NIET bewaard — zie melding');
       toast('Bewaren mislukt: ' + (err && err.name === 'QuotaExceededError' ? 'onvoldoende opslagruimte. Verwijder oude projecten.' : (err && err.message) || err));
     }
   })();
@@ -4463,7 +4649,7 @@ async function loadProject(id) {
       const buf = await decodeAudio(ac, await (blob.arrayBuffer ? blob.arrayBuffer() : new Response(blob).arrayBuffer()));
       const data = [];
       for (let ch = 0; ch < buf.numberOfChannels; ch++) data.push(buf.getChannelData(ch));
-      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true, repairs: tk.repairs || [], stash: [] });
+      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: OLD_COLORS.includes(tk.color) ? COLORS[OLD_COLORS.indexOf(tk.color)] : tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true, repairs: tk.repairs || [], stash: [] });
     }
     S.bypass = false;
     for (const t of takes) if (t.repairs.some((r) => r.on)) { busy(true, `Reparaties toepassen: ${t.name}…`); applyRepairs(t); }
@@ -4588,6 +4774,82 @@ $('installBtn').onclick = async () => {
   $('installBtn').hidden = true;
 };
 window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; toast('Take Crossfader is geïnstalleerd'); });
+
+/* ---------- uiterlijk: startscherm, instellingen, sneltoetsen ---------- */
+/** Startscherm tonen zolang er geen takes zijn. */
+function setEmpty(on) {
+  if (document.body.classList.contains('empty') === on) return;
+  document.body.classList.toggle('empty', on);
+  if (on) fillRecent();
+}
+/** Illustratie: drie takes onder elkaar, de edit (goud) wisselt van take naar take. */
+function welcomeArt() {
+  const W = 920, rowH = 44, gap = 14, n = 92, bw = W / n, cols = COLORS.slice(0, 3);
+  const cut = [0, 34, 61, n];                           // de edit: take 1, dan take 2, dan take 3
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let out = '';
+  const ys = [];
+  for (let r = 0; r < 3; r++) {
+    const y0 = r * (rowH + gap), mid = y0 + rowH / 2;
+    ys.push(mid);
+    out += `<rect x="0" y="${y0}" width="${W}" height="${rowH}" rx="8" fill="${cols[r]}" fill-opacity=".07"/>`;
+    for (let i = 0; i < n; i++) {
+      const ph = (i % 23) / 23, env = Math.pow(Math.sin(Math.PI * Math.min(1, ph * 1.15)), .7);
+      const h = Math.max(3, (rowH - 10) * (0.18 + 0.82 * env) * (0.65 + 0.35 * rnd()));
+      const on = i >= cut[r] && i < cut[r + 1];
+      out += `<rect x="${(i * bw + 1.6).toFixed(1)}" y="${(mid - h / 2).toFixed(1)}" width="${(bw - 3.2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.6" fill="${cols[r]}" fill-opacity="${on ? 1 : .22}"/>`;
+    }
+  }
+  // de gouden lijn van de edit, met een crossfade-bocht bij elke wissel
+  const xs = (i) => i * bw;
+  let d = `M ${xs(0)} ${ys[0]} L ${xs(cut[1]) - 18} ${ys[0]}`;
+  d += ` C ${xs(cut[1])} ${ys[0]}, ${xs(cut[1])} ${ys[1]}, ${xs(cut[1]) + 18} ${ys[1]} L ${xs(cut[2]) - 18} ${ys[1]}`;
+  d += ` C ${xs(cut[2])} ${ys[1]}, ${xs(cut[2])} ${ys[2]}, ${xs(cut[2]) + 18} ${ys[2]} L ${W} ${ys[2]}`;
+  out += `<path d="${d}" fill="none" stroke="#e3ae4b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
+  for (const c of [cut[1], cut[2]]) out += `<circle cx="${xs(c)}" cy="${(ys[cut.indexOf(c) - 1] + ys[cut.indexOf(c)]) / 2}" r="5" fill="#141925" stroke="#e3ae4b" stroke-width="2.5"/>`;
+  $('welArt').innerHTML = `<svg viewBox="0 0 ${W} ${3 * rowH + 2 * gap}" role="img">${out}</svg>`;
+}
+/** Laatst gebruikte projecten op het startscherm. */
+async function fillRecent() {
+  const el = $('welRecent');
+  let list = [];
+  try { list = await dbAll('projects'); } catch (_) { list = []; }
+  list.sort((a, b) => b.updated - a.updated);
+  if (!list.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<h2>Verder met een project</h2><div class="plist">${list.slice(0, 4).map((p) => `
+    <div class="pitem"><span class="pname">${esc(p.name)}</span>
+      <span class="pmeta">${p.takes.length} take${p.takes.length === 1 ? '' : 's'}, edit ${fmt(p.length || 0, 0)} · ${new Date(p.updated).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+      <button data-wopen="${p.id}">Openen</button></div>`).join('')}</div>`;
+  el.querySelectorAll('[data-wopen]').forEach((b) => {
+    b.onclick = () => loadProject(b.dataset.wopen).catch((err) => { busy(false); toast('Openen mislukt: ' + (err.message || err)); });
+  });
+}
+$('welImport').onclick = () => $('fileInput').click();
+$('welDemo').onclick = makeDemo;
+$('welOpen').onclick = async () => {
+  let n = 0; try { n = (await dbAll('projects')).length; } catch (_) { n = 0; }
+  if (n) openProjects(); else $('projFileInput').click();
+};
+
+// instellingen: het venster opent onder het tandwiel
+$('setPop').addEventListener('toggle', (e) => {
+  if (e.newState !== 'open') return;
+  const r = $('setBtn').getBoundingClientRect(), p = $('setPop');
+  p.style.top = (r.bottom + 6) + 'px';
+  p.style.left = Math.max(8, Math.min(window.innerWidth - p.offsetWidth - 8, r.right - p.offsetWidth)) + 'px';
+});
+
+// sneltoetsen
+function showKeys() { const d = $('keysDlg'); if (!d.open) d.showModal(); }
+$('keysBtn').onclick = showKeys;
+$('keysClose').onclick = () => $('keysDlg').close();
+$('keysDlg').addEventListener('click', (e) => { if (e.target === $('keysDlg')) $('keysDlg').close(); });
+
+// zodra de letter geladen is, de tijdlijn opnieuw tekenen
+if (document.fonts && document.fonts.load) document.fonts.load('12px "Atkinson Hyperlegible Next"').then(() => { S.dirty = true; }).catch(() => {});
+welcomeArt();
 
 /* ---------- start ---------- */
 loadSettings();
