@@ -45,6 +45,7 @@ button:disabled { opacity: .4; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover:not(:disabled) { background: #3b8af0; }
 button.danger { color: var(--danger); }
+button.act, button.act:hover:not(:disabled) { background: var(--accent2); border-color: var(--accent2); color: #14171c; }
 select, input[type=number], input[type=text] {
   background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px;
 }
@@ -119,6 +120,8 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .kv b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
 body.aligning .timeline { max-height: 30vh; min-height: 150px; }
 #alCanvas { width: 100%; height: 352px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; }
+#repCanvas { width: 100%; height: 344px; display: block; background: #0b0d10; outline: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: crosshair; }
+.pitem.off .pname, .pitem.off .pmeta { opacity: .45; }
 #xfCanvas { width: 100%; height: 240px; display: block; background: var(--lane); border: 1px solid var(--line); border-radius: 8px; touch-action: none; cursor: col-resize; }
 .help { max-width: 860px; color: var(--muted); }
 .help h2 { color: var(--text); font-size: 15px; margin: 0 0 8px; }
@@ -179,6 +182,7 @@ kbd {
     <span class="sep"></span>
     <button id="markBtn" title="Marker op de afspeelkop, ook tijdens het afspelen (M). Naar vorige/volgende marker: , en .">+ Marker</button>
     <button id="alignBtn" title="Twee takes, of de twee kanten van een geselecteerde crossfade, groot onder en over elkaar uitlijnen">Uitlijnen</button>
+    <button id="repairBtn" title="Bijgeluiden repareren (R): kuchje, tik, stoelgeschuif of verkeer wegwerken in het spectrogram van de geselecteerde clip of take">Repareer</button>
     <button id="deleteBtn" title="Verwijder selectie (Delete)">Verwijder</button>
     <button id="undoBtn" title="Ongedaan maken (Ctrl/⌘+Z)">↶</button>
     <button id="redoBtn" title="Opnieuw (Ctrl/⌘+Shift+Z)">↷</button>
@@ -216,8 +220,9 @@ kbd {
    samenstellen van één edit uit meerdere takes, met crossfades.
 
    Model
-   - take:  { id, name, buffer, data[], peaks, sync, color }
+   - take:  { id, name, buffer, data[], peaks, sync, color, repairs[], stash[] }
             sync = positie (s) van het begin van de take op de tijdlijn.
+            repairs = reparaties van bijgeluiden (zie 'reparatie van bijgeluiden'); het bestand zelf verandert nooit.
    - clip:  { id, takeId, start, offset, dur, gain, fadeIn, fadeOut, xShape }
             start  = positie op de tijdlijn (s)
             offset = positie in de bron (s)
@@ -253,6 +258,7 @@ const S = {
   drag: null, dirty: true, xfView: null,
   meter: 0,
   tailDef: { len: 2.5, gain: -6, lp: 0 }, pick: null,
+  bypass: false, repAmt: 0.6, repSens: 5, repBright: 0, repCache: null,
 };
 
 /* ---------- helpers ---------- */
@@ -274,7 +280,7 @@ function fmt(t, dec = 3) {
   const neg = t < 0; t = Math.abs(t);
   const m = Math.floor(t / 60), s = t - m * 60;
   let ss = s.toFixed(dec);
-  if (s < 10) ss = '0' + ss;
+  if (parseFloat(ss) < 10) ss = '0' + ss;
   return (neg ? '-' : '') + m + ':' + ss;
 }
 const ms = (s) => Math.round(s * 1000);
@@ -330,7 +336,7 @@ function addTake(name, buffer, file) {
   for (let ch = 0; ch < buffer.numberOfChannels; ch++) data.push(buffer.getChannelData(ch));
   const used = new Set(S.takes.map((t) => t.color));
   const color = COLORS.find((c) => !used.has(c)) || COLORS[S.takes.length % COLORS.length];
-  const t = { id: newId(), name, buffer, data, peaks: computePeaks(buffer), sync: 0, color, file: file || null, fileKey: uid(), stored: false };
+  const t = { id: newId(), name, buffer, data, peaks: computePeaks(buffer), sync: 0, color, file: file || null, fileKey: uid(), stored: false, repairs: [], stash: [] };
   S.takes.push(t);
   if (S.clips.length === 0) {
     pushUndo();
@@ -871,11 +877,15 @@ function deleteSelection(leaveGap = false) {
     deleteRange(Math.min(s.t0, s.t1), Math.max(s.t0, s.t1), !leaveGap);
   } else if (s.kind === 'gap') {
     const g = gapAt(s.t); if (g) closeGapBefore(g.next);
+  } else if (s.kind === 'repair') {
+    const t = takeOf(s.takeId);
+    if (s.cur && t) removeRepair(t, s.cur);
+    else if (s.box) { s.box = null; renderInspector(); }
   }
 }
 
 /* ---------- undo ---------- */
-function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers }); }
+function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers, rep: S.takes.map((t) => [t.id, t.repairs || []]) }); }
 function pushUndo() {
   S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift();
   S.redoBackup = S.redo.slice();   // terug te zetten als de bewerking per saldo niets verandert
@@ -886,6 +896,10 @@ function restore(str) {
   const o = JSON.parse(str);
   S.clips = o.clips.filter((c) => takeOf(c.takeId));
   o.sync.forEach(([id, s]) => { const t = takeOf(id); if (t) t.sync = s; });
+  (o.rep || []).forEach(([id, list]) => {
+    const t = takeOf(id);
+    if (t && JSON.stringify(t.repairs || []) !== JSON.stringify(list)) { t.repairs = list; applyRepairs(t); }
+  });
   S.markers = o.markers || [];
   afterEdit();
 }
@@ -919,6 +933,7 @@ function validateSel() {
   else if (s.kind === 'gap' && !gapAt(s.t)) S.sel = null;
   else if (s.kind === 'align' && (!alignSrc(s, 'a') || !alignSrc(s, 'b'))) S.sel = null;
   else if (s.kind === 'marker' && !S.markers.some((m) => m.id === s.id)) S.sel = null;
+  else if (s.kind === 'repair' && !takeOf(s.takeId)) S.sel = null;
 }
 
 function afterEdit() {
@@ -1067,7 +1082,7 @@ function stop() {
     if (px(S.playhead) < 0 || px(S.playhead) > cssW) { S.view = Math.max(0, S.playhead - 1); updateScroll(); }
   }
 }
-function togglePlay() { if (S.playing) stop(); else play(S.playhead); }
+function togglePlay() { if (S.playing) stop(); else if (S.sel && S.sel.kind === 'repair') repPlay(); else play(S.playhead); }
 
 function auditionJunction() {
   const s = S.sel;
@@ -1225,6 +1240,7 @@ const safeName = (n) => (n || 'edit').normalize('NFD').replace(/[\u0300-\u036f]/
 /** Render [a,b] van de edit en sla op als WAV of MP3, eventueel genormaliseerd. */
 async function exportAudio(a = 0, b = mixEnd(), suffix = '') {
   if (!S.clips.length) { toast('De edit is leeg'); return; }
+  if (S.bypass) setBypass(false);              // exporteren gaat altijd mét de reparaties
   const fmtDef = EXPORT_FORMATS[S.exportFmt] || EXPORT_FORMATS.wav24;
   const ac = ensureAC();
   let sr = S.exportRate === 'project' ? ac.sampleRate : +S.exportRate;
@@ -1370,6 +1386,13 @@ function matchLevel(j, win = 1.5) {
 
 /** Verschuif de inhoud van B (slip) zodat de golfvormen in de crossfade zo goed mogelijk in fase lopen. */
 function phaseAlign(j) {
+  const r = phaseLag(j);
+  if (r.err) { toast(r.err); return; }
+  mutate(() => { j.b.offset += r.best / r.sr; });
+  toast(`B ${r.best >= 0 ? 'later' : 'eerder'} uit de bron gehaald: ${(Math.abs(r.best) / r.sr * 1000).toFixed(2)} ms · correlatie ${r.score.toFixed(2)}`);
+}
+/** Hoeveel samples B later uit de bron moet komen om in de crossfade in fase te lopen met A: { best, score, sr } of { err }. */
+function phaseLag(j) {
   const a = j.a, b = j.b, ta = takeOf(a.takeId), tb = takeOf(b.takeId);
   const sr = tb.buffer.sampleRate;
   let w0 = j.s, w1 = j.e;
@@ -1399,7 +1422,7 @@ function phaseAlign(j) {
     return out;
   })();
   let ea = 0; for (let k = 0; k < N; k++) ea += A[k] * A[k];
-  if (ea < 1e-9) { toast('Te stil om uit te lijnen'); return; }
+  if (ea < 1e-9) return { err: 'Te stil om uit te lijnen' };
   let best = 0, bestScore = -Infinity;
   const lagMin = Math.max(-maxLag, Math.ceil(-b.offset * sr));
   const lagMax = Math.min(maxLag, Math.floor((tb.buffer.duration - b.offset - b.dur) * sr));
@@ -1410,9 +1433,8 @@ function phaseAlign(j) {
     const sc = eb > 1e-12 ? dot / Math.sqrt(ea * eb) : -Infinity;
     if (sc > bestScore) { bestScore = sc; best = lag; }
   }
-  if (!isFinite(bestScore)) { toast('Niet genoeg materiaal om uit te lijnen'); return; }
-  mutate(() => { b.offset += best / sr; });
-  toast(`B ${best >= 0 ? 'later' : 'eerder'} uit de bron gehaald: ${(Math.abs(best) / sr * 1000).toFixed(2)} ms · correlatie ${bestScore.toFixed(2)}`);
+  if (!isFinite(bestScore)) return { err: 'Niet genoeg materiaal om uit te lijnen' };
+  return { best, score: bestScore, sr };
 }
 
 function onsetEnv(tk, rate) {
@@ -1639,6 +1661,12 @@ function drawBase() {
       drawWave(g, t, t.sync, Math.max(xs, 0), Math.min(xe, W), tAt, 1 / S.pps, y0 + TAKE_H / 2, TAKE_H / 2 - 7, null);
       g.strokeStyle = hexA(t.color, 0.5); g.lineWidth = 1;
       g.strokeRect(xs + 0.5, y0 + 4.5, xe - xs - 1, TAKE_H - 9);
+      for (const r of t.repairs || []) {                        // reparaties: groen streepje onderin
+        const a = px(t.sync + r.t0), b = px(t.sync + r.t1);
+        if (b < 0 || a > W) continue;
+        g.fillStyle = r.on && !S.bypass ? '#1dd1a1' : '#6b7382';
+        g.fillRect(Math.round(a) - 1, y0 + TAKE_H - 10, Math.max(3, b - a + 2), 5);
+      }
     }
     if (S.range && S.range.takeId === t.id) {
       const a = px(Math.min(S.range.t0, S.range.t1)), b = px(Math.max(S.range.t0, S.range.t1));
@@ -1753,6 +1781,7 @@ function frame() {
     }
     S.playhead = t;
     if (S.sel && S.sel.kind === 'align') drawAlign();
+    if (S.sel && S.sel.kind === 'repair') drawRepair(true);
     // volgen
     const x = px(t);
     if (!S.drag && (x > cssW - 30 || x < 0)) { S.view = Math.max(0, t - 30 / S.pps); S.dirty = true; updateScroll(); }
@@ -1901,6 +1930,7 @@ function select(sel) {
     const o = S.sel;
     S.lastRange = o && o.kind === 'erange' ? [Math.min(o.t0, o.t1), Math.max(o.t0, o.t1)] : null;
   }
+  if (S.bypass && !(sel && sel.kind === 'repair')) setBypass(false, true);   // A/B hoort bij het reparatievenster
   S.sel = sel;
   if (S.pick && !(sel && sel.kind === 'junction' && sel.a === S.pick.a)) S.pick = null;
   if (!(sel && sel.kind === 'take' && S.range && S.range.takeId === sel.id)) S.range = null;
@@ -1917,13 +1947,14 @@ function updateButtons() {
   $('deleteBtn').disabled = !S.sel;
   $('splitBtn').disabled = !S.clips.length;
   $('exportBtn').disabled = !S.clips.length;
+  $('repairBtn').disabled = !S.takes.length;
   $('playBtn').disabled = !S.clips.length && !S.playing;
 }
 
 function renderInspector() {
   const el = $('inspector');
   const s = S.sel;
-  document.body.classList.toggle('aligning', !!(s && s.kind === 'align'));
+  document.body.classList.toggle('aligning', !!(s && (s.kind === 'align' || s.kind === 'repair')));
   if (s && s.kind === 'junction') {
     const j = junctionOf(s.a, s.b);
     if (j) return inspectJunction(el, j);
@@ -1935,6 +1966,7 @@ function renderInspector() {
   if (s && s.kind === 'export') return inspectExport(el);
   if (s && s.kind === 'marker') { const mk = S.markers.find((m) => m.id === s.id); if (mk) return inspectMarker(el, mk); }
   if (s && s.kind === 'align') return inspectAlign(el, s);
+  if (s && s.kind === 'repair') return inspectRepair(el, s);
   if (s && s.kind === 'erange') {
     const a = Math.min(s.t0, s.t1), b = Math.max(s.t0, s.t1);
     el.innerHTML = `
@@ -1946,6 +1978,7 @@ function renderInspector() {
       <div class="row">
         <button id="erPlay">▶ Beluister selectie</button>
         <button id="erPreview">▶ Beluister zonder dit stuk</button>
+        <button id="erRepair" title="Een bijgeluid in dit stuk wegwerken, in het spectrogram">Bijgeluid repareren… <kbd>R</kbd></button>
         <button id="erLoop" title="Speelt de selectie steeds opnieuw; bewerken tijdens het herhalen kan gewoon (L)">${S.playing && S.playing.loop ? '■ Stop herhalen' : '🔁 Herhaal selectie'} <kbd>L</kbd></button>
         <span class="hint"><b>Aanschuiven</b>: de edit wordt korter en de naad krijgt een crossfade van ${ms(S.defXf)} ms. <b>Gat laten</b>: er komt stilte voor in de plaats, met korte fades aan de randen. Ongedaan maken met ⌘Z.</span>
       </div>`;
@@ -1953,6 +1986,7 @@ function renderInspector() {
     $('erGap').onclick = () => deleteRange(a, b, false);
     $('erPlay').onclick = () => play(a, b);
     $('erLoop').onclick = toggleLoop;
+    $('erRepair').onclick = openRepair;
     $('erPreview').onclick = () => {
       // speel 2 s voor de selectie, en ga dan verder vanaf het eind (zoals het na weghalen zou klinken, zonder crossfade)
       play(Math.max(0, a - S.preroll), a);
@@ -1984,6 +2018,7 @@ function renderInspector() {
       <li><b>Takes op een klik:</b> sleep in een take-baan om een stuk te selecteren en druk <kbd>E</kbd>. Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten.</li>
       <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
       <li><b>Galm valt weg bij een wissel?</b> Klik op de crossfade en zet <b>Galmstaart</b> aan (<kbd>G</kbd>): de vorige take klinkt zacht door en sterft uit onder de nieuwe. Zingt de vorige take meteen verder, kies dan een <b>donor-galm</b> uit een plek waar het koor stopt.</li>
+      <li><b>Kuchje, tik of stoelgeschuif?</b> Selecteer de clip of take en druk <kbd>R</kbd>: sleep in het spectrogram een rechthoek om het bijgeluid en kies <i>Dempen</i> of <i>Opvullen</i>, of laat tikken automatisch zoeken. <kbd>X</kbd> vergelijkt met het origineel.</li>
       <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
       <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen ga je verder waar je was; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
@@ -2009,6 +2044,7 @@ function renderInspector() {
       <span><kbd>⌘A</kbd> alle clips · <kbd>⇧</kbd>-klik reeks · <kbd>⌘</kbd>-klik losse clip</span>
       <span><kbd>⌥</kbd><kbd>←</kbd> <kbd>→</kbd> selectie 10 ms verschuiven (<kbd>⇧</kbd>: 1 s)</span>
       <span><kbd>⌥</kbd>+<kbd>Delete</kbd> op een selectie: weghalen en gat laten</span>
+      <span><kbd>R</kbd> bijgeluiden repareren · <kbd>X</kbd> met/zonder reparaties</span>
       <span><kbd>M</kbd> marker zetten · <kbd>,</kbd> <kbd>.</kbd> vorige/volgende marker</span>
       <span><kbd>L</kbd> geselecteerd stuk of crossfade herhalen</span>
       <span><b>Uitlijnen</b> (werkbalk): twee takes tot op de sample t.o.v. elkaar verschuiven</span>
@@ -2169,6 +2205,7 @@ function inspectClip(el, c) {
       <button id="clAfter" title="Selecteert deze clip en alle clips erna, om ze samen te verschuiven">Selecteer deze en alles erna</button>
       <button id="clAll" title="Selecteert de hele edit (⌘A)">Selecteer alles</button>
       ${junctions().some((j) => j.b === c) ? '<button id="clLevel" title="Past de gain van deze clip aan zodat hij rond de overgang even luid is als de clip ervoor">Volume gelijk aan vorige clip</button>' : ''}
+      <button id="clRepair" title="Kuchje, tik, stoelgeschuif of ander bijgeluid in dit stuk wegwerken, in het spectrogram">Bijgeluiden repareren… <kbd>R</kbd></button>
       <button id="clPlay">▶ Speel vanaf clip</button>
       <button id="clDel" class="danger">Verwijder clip</button>
       <span class="hint">Wissel van take om dit stuk door dezelfde plek uit een andere take te vervangen (met crossfades). Alt+slepen verschuift de inhoud binnen de clip.</span>
@@ -2188,6 +2225,7 @@ function inspectClip(el, c) {
   $('clAfter').onclick = () => selectClips(S.clips.filter((x) => x.start >= c.start - 1e-9).map((x) => x.id));
   $('clAll').onclick = selectAllClips;
   if ($('clLevel')) $('clLevel').onclick = () => matchLevel(junctions().find((j) => j.b === c));
+  $('clRepair').onclick = openRepair;
   $('clPlay').onclick = () => play(c.start);
   $('clDel').onclick = () => deleteSelection();
 }
@@ -2238,6 +2276,7 @@ function inspectTake(el, t) {
     </div>
     <div class="row">
       <button id="tkAlignWin" title="Deze take en een andere onder en over elkaar, met zoom tot op de sample">Uitlijnvenster…</button>
+      <button id="tkRepair" title="Kuchje, tik, stoelgeschuif of ander bijgeluid in deze take wegwerken, in het spectrogram">Bijgeluiden repareren… <kbd>R</kbd>${(t.repairs || []).length ? ` (${t.repairs.length})` : ''}</button>
       <button id="tkWhole">Hele take in edit</button>
       <button id="tkSolo">▶ Solo vanaf afspeelkop</button>
       <button id="tkDel" class="danger">Verwijder take</button>
@@ -2252,6 +2291,7 @@ function inspectTake(el, t) {
   if (others.length) $('tkAuto').onclick = () => { busy(true, 'Uitlijnen…'); setTimeout(() => { try { autoSync(t, takeOf(+$('tkRef').value)); } finally { busy(false); } }, 30); };
   $('tkWhole').onclick = () => replaceRange(t, t.sync, t.sync + t.buffer.duration);
   $('tkAlignWin').onclick = openAlign;
+  $('tkRepair').onclick = openRepair;
   $('tkSolo').onclick = () => playTake(t, S.playhead);
   $('tkDel').onclick = () => removeTake(t);
 }
@@ -2989,6 +3029,713 @@ function inspectAlign(el, s) {
   requestAnimationFrame(drawAlign);
 }
 
+/* ---------- reparatie van bijgeluiden ----------
+   Kuchjes, stoelgeschuif, tikken, bladomslaan, verkeer. Reparaties horen bij de take:
+     take.repairs = [{ id, kind, t0, t1, f0, f1, amount, on }]     (t in seconden in de bron, f in Hz)
+       kind 'atten': het tijd-frequentiegebied dempen (amount 1 = −48 dB)
+       kind 'fill' : het gebied terugbrengen tot het niveau van vlak ervoor en erna (spectrale interpolatie)
+       kind 'click': een tik van hooguit 12 ms vervangen door wat de muziek eromheen voorspelt (LPC)
+   Niet-destructief: het audiobestand en de opslag blijven origineel. In het geheugen worden alleen de
+   gerepareerde stukjes overschreven; het origineel van elk stukje staat in take.stash, zodat een reparatie
+   altijd uit te zetten, aan te passen of terug te draaien is. Omdat de take zelf wordt gerepareerd, werkt
+   het overal door: golfvorm, afspelen, uitlijnen en export. */
+const fftCache = {};
+function fftFor(N) {
+  if (fftCache[N]) return fftCache[N];
+  const bits = Math.log2(N), rev = new Uint32Array(N), cos = new Float64Array(N / 2), sin = new Float64Array(N / 2);
+  const hann = new Float64Array(N), root = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b);
+    rev[i] = r; hann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N); root[i] = Math.sqrt(hann[i]);
+  }
+  for (let i = 0; i < N / 2; i++) { cos[i] = Math.cos((2 * Math.PI * i) / N); sin[i] = Math.sin((2 * Math.PI * i) / N); }
+  /** FFT ter plaatse; inv = terug naar het tijddomein. */
+  const run = (re, im, inv) => {
+    for (let i = 0; i < N; i++) { const r = rev[i]; if (r > i) { let t = re[i]; re[i] = re[r]; re[r] = t; t = im[i]; im[i] = im[r]; im[r] = t; } }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1, step = N / size;
+      for (let st = 0; st < N; st += size) for (let j = 0; j < half; j++) {
+        const k = j * step, wr = cos[k], wi = inv ? sin[k] : -sin[k], a = st + j, b = a + half;
+        const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+    if (inv) for (let i = 0; i < N; i++) { re[i] /= N; im[i] /= N; }
+  };
+  return (fftCache[N] = { N, run, hann, root });
+}
+
+/** De kanaaldata van een take opnieuw ophalen (na schrijven in de buffer). */
+function chans(take) {
+  const d = [];
+  for (let ch = 0; ch < take.buffer.numberOfChannels; ch++) d.push(take.buffer.getChannelData(ch));
+  take.data = d;
+  return d;
+}
+function stashRegion(take, s0, s1) { take.stash.push({ s0, data: take.data.map((d) => d.slice(s0, s1)) }); }
+/** Zet alle gerepareerde stukjes terug naar het origineel. Geeft het geraakte bereik [lo, hi] in samples. */
+function restoreTake(take) {
+  const st = take.stash || [];
+  let lo = Infinity, hi = -1;
+  for (let i = st.length - 1; i >= 0; i--) {
+    st[i].data.forEach((d, ch) => take.buffer.copyToChannel(d, ch, st[i].s0));
+    lo = Math.min(lo, st[i].s0); hi = Math.max(hi, st[i].s0 + st[i].data[0].length);
+  }
+  take.stash = [];
+  chans(take);
+  return [lo, hi];
+}
+/** Reken de take opnieuw door: origineel terugzetten en alle ingeschakelde reparaties op volgorde toepassen. */
+function applyRepairs(take) {
+  if (!take.stash) take.stash = [];
+  if (!take.repairs) take.repairs = [];
+  let [lo, hi] = restoreTake(take);
+  if (!S.bypass) for (const r of take.repairs) {
+    if (!r.on) continue;
+    const reg = r.kind === 'click' ? repairClick(take, r) : repairSpectral(take, r);
+    if (reg) { lo = Math.min(lo, reg[0]); hi = Math.max(hi, reg[1]); }
+  }
+  if (hi > lo) updatePeaks(take, lo, hi);
+  S.repCache = null; S.dirty = true;
+}
+/** Voer fn uit terwijl de take de originele audio bevat (bijv. om de audio te bewaren). */
+function withOriginal(take, fn) {
+  if (!take.stash || !take.stash.length) return fn();
+  restoreTake(take);
+  try { return fn(); } finally { applyRepairs(take); }
+}
+function updatePeaks(take, s0, s1) {
+  const P = take.peaks, d = take.data, n = d[0].length;
+  const i1 = Math.min(P.mn.length - 1, Math.floor((s1 - 1) / PEAK_BLOCK));
+  for (let i = Math.max(0, Math.floor(s0 / PEAK_BLOCK)); i <= i1; i++) {
+    let lo = 0, hi = 0;
+    const a = i * PEAK_BLOCK, b = Math.min(n, a + PEAK_BLOCK);
+    for (const ch of d) for (let k = a; k < b; k++) { const v = ch[k]; if (v < lo) lo = v; else if (v > hi) hi = v; }
+    P.mn[i] = lo; P.mx[i] = hi;
+  }
+}
+function mutateRepairs(take, fn) { pushUndo(); fn(); applyRepairs(take); afterEdit(); }
+function removeRepair(take, id) {
+  const s = S.sel; if (s && s.kind === 'repair' && s.cur === id) s.cur = null;
+  mutateRepairs(take, () => { take.repairs = take.repairs.filter((r) => r.id !== id); });
+  toast('Reparatie verwijderd: dit stuk klinkt weer zoals opgenomen');
+}
+/** A/B: alle reparaties tijdelijk uit (je hoort het origineel) of weer aan. Wordt niet bewaard. */
+function setBypass(on, quiet) {
+  if (!!S.bypass === !!on) return;
+  S.bypass = !!on;
+  for (const t of S.takes) if ((t.repairs || []).some((r) => r.on)) applyRepairs(t);
+  S.dirty = true;
+  if (quiet) return;
+  const p = S.playing;
+  if (p && p.mode === 'edit') play(S.playhead, p.to, p.loop, true);
+  else if (p && p.mode === 'take') { const t = takeOf(p.takeId); playSrc(t, S.playhead - t.sync, p.to - t.sync, p.start); }
+  renderInspector();
+  toast(S.bypass ? 'A/B: je hoort nu het ORIGINEEL, zonder reparaties (X = terug)' : 'A/B: reparaties weer aan');
+}
+
+/**
+ * Dempen of opvullen van het gebied [t0,t1] × [f0,f1], met overlappende vensters (STFT).
+ * Alleen het verschil wordt bij het signaal opgeteld; buiten het gebied blijft de audio dus exact gelijk.
+ * Alle kanalen krijgen dezelfde demping, zodat het stereobeeld niet verschuift.
+ */
+function repairSpectral(take, r) {
+  const d = take.data, sr = take.buffer.sampleRate, n = d[0].length, nc = d.length;
+  const N = sr > 50000 ? 4096 : 2048, hop = N >> 2, half = N >> 1, F = fftFor(N), w = F.root;
+  const a = clamp(Math.round(r.t0 * sr), 0, n), b = clamp(Math.round(r.t1 * sr), 0, n);
+  if (b - a < 2) return null;
+  const s0 = Math.max(0, a - N), s1 = Math.min(n, b + N);
+  const kA = clamp(Math.floor((r.f0 * N) / sr), 0, half), kB = clamp(Math.ceil((r.f1 * N) / sr), 0, half);
+  const kLo = Math.max(0, kA - 2), kHi = Math.min(half, kB + 2);
+  const wf = (k) => (k < kA ? 1 - (kA - k) / 3 : k > kB ? 1 - (k - kB) / 3 : 1);     // zachte rand in frequentie
+  const re = new Float64Array(N), im = new Float64Array(N);
+  const spec = (ch, p) => {
+    const x = d[ch];
+    for (let i = 0; i < N; i++) { const q = p + i; re[i] = q >= 0 && q < n ? x[q] * w[i] : 0; im[i] = 0; }
+    F.run(re, im, false);
+  };
+  // 'opvullen': het gemiddelde spectrum van vlak vóór en vlak na het gebied
+  let ctxB = null, ctxA = null;
+  if (r.kind === 'fill') {
+    const ctx = (starts) => {
+      if (!starts.length) return null;
+      const m = new Float64Array(half + 1);
+      for (const p of starts) for (let ch = 0; ch < nc; ch++) { spec(ch, p); for (let k = kLo; k <= kHi; k++) m[k] += Math.hypot(re[k], im[k]); }
+      for (let k = kLo; k <= kHi; k++) m[k] /= starts.length;
+      return m;
+    };
+    const before = [], after = [];
+    for (let i = 0; i < 6; i++) { const p = a - N - i * hop; if (p >= 0) before.push(p); const q = b + i * hop; if (q + N <= n) after.push(q); }
+    ctxB = ctx(before); ctxA = ctx(after);
+    if (!ctxB) ctxB = ctxA; if (!ctxA) ctxA = ctxB;
+  }
+  const acc = d.map(() => new Float32Array(s1 - s0));
+  const X = d.map(() => [new Float64Array(half + 1), new Float64Array(half + 1)]);
+  const G = new Float64Array(half + 1);
+  const amt = clamp(r.amount == null ? 1 : r.amount, 0, 1), LN = Math.LN10 / 20;
+  for (let p = a - N + hop; p < b; p += hop) {
+    const c = p + half, dist = c < a ? a - c : c > b ? c - b : 0, wt = 1 - dist / half;   // zachte rand in tijd
+    if (wt <= 0) continue;
+    const u = clamp((c - a) / Math.max(1, b - a), 0, 1);
+    for (let ch = 0; ch < nc; ch++) {
+      spec(ch, p);
+      for (let k = kLo; k <= kHi; k++) { X[ch][0][k] = re[k]; X[ch][1][k] = im[k]; }
+    }
+    for (let k = kLo; k <= kHi; k++) {
+      const ww = wt * Math.max(0, wf(k));
+      if (ctxB) {
+        let M = 0; for (let ch = 0; ch < nc; ch++) M += Math.hypot(X[ch][0][k], X[ch][1][k]);
+        const T = ctxB[k] * (1 - u) + ctxA[k] * u;
+        G[k] = M > 1e-12 && T < M ? Math.pow(Math.max(T, M * 1e-3) / M, amt * ww) : 1;   // alleen wat boven de omgeving uitsteekt gaat omlaag
+      } else G[k] = Math.exp(-48 * amt * ww * LN);
+    }
+    for (let ch = 0; ch < nc; ch++) {
+      re.fill(0); im.fill(0);
+      for (let k = kLo; k <= kHi; k++) {
+        const g = G[k] - 1; if (!g) continue;
+        const xr = X[ch][0][k] * g, xi = X[ch][1][k] * g;
+        re[k] = xr; im[k] = xi;
+        if (k > 0 && k < half) { re[N - k] = xr; im[N - k] = -xi; }
+      }
+      F.run(re, im, true);
+      const o = acc[ch];
+      for (let i = Math.max(0, s0 - p); i < N; i++) { const q = p + i - s0; if (q >= o.length) break; o[q] += re[i] * w[i] * 0.5; }
+    }
+  }
+  stashRegion(take, s0, s1);
+  for (let ch = 0; ch < nc; ch++) {
+    const o = acc[ch], x = d[ch];
+    for (let i = 0; i < o.length; i++) o[i] += x[s0 + i];
+    take.buffer.copyToChannel(o, ch, s0);
+  }
+  chans(take);
+  return [s0, s1];
+}
+
+/** Tik wegwerken: de samples [t0,t1] vervangen door wat de muziek ervoor en erna voorspelt. */
+function repairClick(take, r) {
+  const d = take.data, sr = take.buffer.sampleRate, n = d[0].length;
+  const g0 = clamp(Math.round(r.t0 * sr), 1, n - 2), g1 = clamp(Math.round(r.t1 * sr), g0 + 1, n - 1);
+  if (g1 - g0 > sr * 0.0125) return null;
+  stashRegion(take, g0, g1);
+  for (let ch = 0; ch < d.length; ch++) take.buffer.copyToChannel(lpcFill(d[ch], g0, g1, 32, Math.round(0.03 * sr)), ch, g0);
+  chans(take);
+  return [g0, g1];
+}
+/**
+ * Interpolatie met een autoregressief model (Janssen): schat uit C samples voor en na het gat een
+ * voorspellingsfilter van orde P en kies de ontbrekende samples zo dat de voorspelfout minimaal is.
+ */
+function lpcFill(x, g0, g1, P, C) {
+  const n = x.length, m = g1 - g0, out = new Float32Array(m);
+  const segs = [[Math.max(0, g0 - C), g0], [g1, Math.min(n, g1 + C)]];
+  const p = Math.min(P, Math.floor(Math.max(segs[0][1] - segs[0][0], segs[1][1] - segs[1][0]) / 4));
+  const lin = () => { const a = x[g0 - 1] || 0, b = x[g1] || 0; for (let i = 0; i < m; i++) out[i] = a + ((b - a) * (i + 1)) / (m + 1); return out; };
+  if (p < 2) return lin();
+  const rr = new Float64Array(p + 1);
+  for (const [s, e] of segs) for (let l = 0; l <= p; l++) { let v = 0; for (let i = s; i + l < e; i++) v += x[i] * x[i + l]; rr[l] += v; }
+  if (rr[0] < 1e-10) return lin();
+  rr[0] *= 1.0001;
+  const a = new Float64Array(p + 1), tmp = new Float64Array(p + 1);    // Levinson-Durbin
+  a[0] = 1;
+  let err = rr[0];
+  for (let i = 1; i <= p; i++) {
+    let acc = rr[i]; for (let j = 1; j < i; j++) acc += a[j] * rr[i - j];
+    const k = -acc / err;
+    for (let j = 1; j < i; j++) tmp[j] = a[j] + k * a[i - j];
+    for (let j = 1; j < i; j++) a[j] = tmp[j];
+    a[i] = k; err *= 1 - k * k;
+    if (!(err > 0)) break;
+  }
+  const bb = new Float64Array(p + 1);
+  for (let l = 0; l <= p; l++) { let v = 0; for (let k = 0; k + l <= p; k++) v += a[k] * a[k + l]; bb[l] = v; }
+  const y = new Float64Array(m);
+  for (let i = 0; i < m; i++) {
+    const t = g0 + i; let v = 0;
+    for (let l = -p; l <= p; l++) { const q = t + l; if (q < 0 || q >= n || (q >= g0 && q < g1)) continue; v += bb[Math.abs(l)] * x[q]; }
+    y[i] = -v;
+  }
+  const w = p + 1, L = new Float64Array(m * w);                         // Cholesky van de bandmatrix
+  for (let i = 0; i < m; i++) for (let j = Math.max(0, i - p); j <= i; j++) {
+    let sum = bb[i - j];
+    for (let k = Math.max(0, i - p); k < j; k++) sum -= L[i * w + (i - k)] * L[j * w + (j - k)];
+    L[i * w + (i - j)] = i === j ? Math.sqrt(Math.max(sum, 1e-12)) : sum / L[j * w];
+  }
+  for (let i = 0; i < m; i++) { let v = y[i]; for (let k = Math.max(0, i - p); k < i; k++) v -= L[i * w + (i - k)] * y[k]; y[i] = v / L[i * w]; }
+  for (let i = m - 1; i >= 0; i--) { let v = y[i]; for (let k = i + 1; k <= Math.min(m - 1, i + p); k++) v -= L[k * w + (k - i)] * y[k]; y[i] = v / L[i * w]; }
+  for (let i = 0; i < m; i++) out[i] = y[i];
+  return out;
+}
+
+/**
+ * Zoek tikken in [t0,t1] van de take: heel korte uitschieters in de 'kromming' van de golfvorm, veel sterker dan
+ * de omgeving (±50 ms). Een inzet (medeklinker, aanslag) blijft daarna luid en telt daarom niet als tik.
+ * sens 1–10: hoger = gevoeliger. Geeft [{ t0, t1, score }].
+ */
+function findClicks(take, t0, t1, sens = 5) {
+  const d = take.data, sr = take.buffer.sampleRate, n = d[0].length;
+  const a = clamp(Math.round(t0 * sr), 2, n), b = clamp(Math.round(t1 * sr), a, n), len = b - a;
+  if (len < sr * 0.02) return [];
+  const dm = new Float32Array(len);
+  for (const x of d) for (let i = 0; i < len; i++) { const q = a + i, v = Math.abs(x[q] - 2 * x[q - 1] + x[q - 2]); if (v > dm[i]) dm[i] = v; }
+  const B = Math.max(16, Math.round(0.004 * sr)), nb = Math.ceil(len / B), bm = new Float32Array(nb), med = new Float32Array(nb);
+  for (let i = 0; i < nb; i++) { let v = 0; const e = Math.min(len, (i + 1) * B); for (let k = i * B; k < e; k++) v += dm[k]; bm[i] = v / (e - i * B); }
+  for (let i = 0; i < nb; i++) { const sl = Array.from(bm.subarray(Math.max(0, i - 12), Math.min(nb, i + 13))).sort((p, q) => p - q); med[i] = sl[sl.length >> 1]; }
+  const K = 6 * Math.pow(1.23, 10 - sens);
+  const gapMax = Math.round(0.0005 * sr), wMax = Math.round(0.004 * sr), pad = 2 + Math.round(0.00015 * sr), W = Math.round(0.003 * sr);
+  const mean = (x0, x1) => { x0 = Math.max(0, x0); x1 = Math.min(len, x1); if (x1 <= x0) return 0; let v = 0; for (let k = x0; k < x1; k++) v += dm[k]; return v / (x1 - x0); };
+  const out = [];
+  for (let i = 0; i < len;) {
+    const m0 = Math.max(med[(i / B) | 0], 1e-7), th = K * m0;
+    if (dm[i] <= th) { i++; continue; }
+    let e1 = i, pk = dm[i];
+    for (let q = i + 1; q < len && q - e1 <= gapMax; q++) if (dm[q] > th) { e1 = q; if (dm[q] > pk) pk = dm[q]; }
+    const e0 = i;
+    i = e1 + gapMax + 1;
+    if (e1 - e0 > wMax) continue;
+    if (mean(e1 + gapMax, e1 + gapMax + W) > 3 * Math.max(mean(e0 - gapMax - W, e0 - gapMax), m0)) continue;   // inzet, geen tik
+    out.push({ t0: (a + e0 - 2 - pad) / sr, t1: (a + e1 + 1 + pad) / sr, score: pk / m0 });
+    if (out.length >= 300) break;
+  }
+  return out;
+}
+
+/* ---------- reparatievenster (spectrogram) ---------- */
+const REP = { RULER: 16, WAVE: 48, SPEC: 280, FMIN: 40 };
+const hz = (f) => (f >= 1000 ? (f / 1000).toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + ' kHz' : Math.round(f) + ' Hz');
+const REP_NAMES = { atten: 'Gedempt', fill: 'Opgevuld', click: 'Tik weg' };
+
+/** Take en (als het venster vanuit de edit is geopend) clip van het reparatievenster; tl() rekent bron- naar tijdlijn-tijd om. */
+function repCtx(s) {
+  const take = takeOf(s.takeId), c = s.clipId ? clipOf(s.clipId) : null, clip = c && take && c.takeId === take.id ? c : null;
+  return { take, clip, tl: (x) => (clip ? clip.start + (x - clip.offset) : take.sync + x) };
+}
+const repW = () => ($('repCanvas') ? $('repCanvas').clientWidth : Math.max(300, $('inspector').clientWidth - 32));
+
+function openRepair() {
+  if (!S.takes.length) { toast('Importeer eerst takes'); return; }
+  const s = S.sel;
+  if (s && s.kind === 'repair') return;
+  const under = (t) => [...S.clips].reverse().find((c) => c.start <= t && end(c) > t);
+  let take = null, clip = null, a = null, b = null;
+  if (s && s.kind === 'clip') clip = clipOf(s.id);
+  else if (s && s.kind === 'junction') clip = clipOf(s.b);
+  else if (s && s.kind === 'erange') {
+    const t0 = Math.min(s.t0, s.t1), t1 = Math.max(s.t0, s.t1);
+    clip = under((t0 + t1) / 2) || under(t0);
+    if (clip) { a = clip.offset + (t0 - clip.start) - 0.5; b = clip.offset + (t1 - clip.start) + 0.5; }
+  } else if (s && s.kind === 'take') {
+    take = takeOf(s.id);
+    if (S.range && S.range.takeId === take.id) { a = Math.min(S.range.t0, S.range.t1) - take.sync - 0.5; b = Math.max(S.range.t0, S.range.t1) - take.sync + 0.5; }
+  } else clip = under(S.playhead);
+  if (clip) take = takeOf(clip.takeId);
+  if (!take) take = S.takes[0];
+  const dur = take.buffer.duration;
+  let pos = clip ? clamp(clip.offset + (S.playhead - clip.start), clip.offset, clip.offset + clip.dur) : clamp(S.playhead - take.sync, 0, dur);
+  if (a == null) { a = pos - 4; b = pos + 4; } else pos = a + 0.5;
+  if (b - a >= dur) { a = 0; b = dur; } else if (a < 0) { b -= a; a = 0; } else if (b > dur) { a -= b - dur; b = dur; }
+  if (S.playing) stop();
+  select({ kind: 'repair', takeId: take.id, clipId: clip ? clip.id : null, t0: a, spx: (b - a) / repW(), box: null, cur: null, pos, clicks: [] });
+}
+
+/** Speel de take solo van bronpositie s0 tot s1 (de afspeelkop van de edit blijft waar hij was). */
+function playSrc(take, s0, s1, start = S.playhead) {
+  stopSources();
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  const dur = take.buffer.duration;
+  s0 = clamp(s0, 0, dur); s1 = clamp(s1, 0, dur);
+  if (s1 - s0 < 0.01) return;
+  const when = ac.currentTime + 0.06;
+  const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
+  src.start(when, s0, s1 - s0);
+  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from: take.sync + s0, to: take.sync + s1, when, loop: null, start };
+  updatePlayBtn(); buildHeads();
+}
+/** Beluisteren in het reparatievenster: rond het gebied of de gekozen reparatie, anders vanaf de cursor. */
+function repPlay() {
+  const s = S.sel; if (!s || s.kind !== 'repair') return;
+  const { take } = repCtx(s);
+  const cur = s.cur && (take.repairs || []).find((r) => r.id === s.cur);
+  const span = s.box || cur;
+  if (span) playSrc(take, span.t0 - 1, span.t1 + 1);
+  else playSrc(take, s.pos, Math.max(s.pos + 1, s.t0 + repW() * s.spx));
+}
+/** Bronpositie van de afspeelkop in het reparatievenster, of null. */
+function repPlayPos(s) {
+  const p = S.playing, { take, clip } = repCtx(s);
+  if (!p) return null;
+  if (p.mode === 'take' && p.takeId === take.id) return S.playhead - take.sync;
+  if (p.mode === 'edit' && clip && S.playhead >= clip.start && S.playhead <= end(clip)) return clip.offset + (S.playhead - clip.start);
+  return null;
+}
+
+const repFmax = (take) => take.buffer.sampleRate / 2;
+function repFy(f, fmax) { return REP.RULER + REP.WAVE + (1 - Math.log(clamp(f, REP.FMIN, fmax) / REP.FMIN) / Math.log(fmax / REP.FMIN)) * REP.SPEC; }
+function repYf(y, fmax) { return REP.FMIN * Math.pow(fmax / REP.FMIN, 1 - clamp((y - REP.RULER - REP.WAVE) / REP.SPEC, 0, 1)); }
+const REP_LUT = (() => {
+  const stops = [[0, 11, 13, 16], [0.25, 24, 38, 92], [0.5, 79, 157, 255], [0.75, 255, 159, 67], [1, 255, 246, 214]], lut = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255, k = Math.min(stops.length - 2, stops.findIndex((st, q) => q < stops.length - 1 && v <= stops[q + 1][0]));
+    const a = stops[k], b = stops[k + 1], u = (v - a[0]) / (b[0] - a[0]);
+    for (let c = 0; c < 3; c++) lut[i * 3 + c] = Math.round(a[c + 1] + (b[c + 1] - a[c + 1]) * u);
+  }
+  return lut;
+})();
+/** Spectrogram van de take: W kolommen vanaf t0 met spx seconden per kolom, logaritmische frequentie-as. */
+function repSpectro(take, t0, spx, W) {
+  const d = take.data, nc = d.length, n = d[0].length, sr = take.buffer.sampleRate, H = REP.SPEC, span = W * spx;
+  // korter venster als je ver inzoomt: dan zie je korte bijgeluiden scherper in de tijd
+  const N = (span < 0.4 ? 256 : span < 1.5 ? 1024 : 2048) * (sr > 50000 ? 2 : 1), half = N >> 1, F = fftFor(N);
+  const cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H;
+  const g = cvs.getContext('2d'), img = g.createImageData(W, H), pix = img.data;
+  const re = new Float64Array(N), im = new Float64Array(N), pw = new Float64Array(half + 1);
+  const fmax = sr / 2, edge = new Float64Array(H + 1);
+  for (let y = 0; y <= H; y++) edge[y] = (REP.FMIN * Math.pow(fmax / REP.FMIN, 1 - y / H) * N) / sr;
+  const ref = (N / 4) * (N / 4), bright = S.repBright || 0;
+  for (let x = 0; x < W; x++) {
+    const p = Math.round((t0 + (x + 0.5) * spx) * sr) - half;
+    let any = false;
+    for (let i = 0; i < N; i++) {
+      const q = p + i; let v = 0;
+      if (q >= 0 && q < n) { for (let ch = 0; ch < nc; ch++) v += d[ch][q]; v /= nc; any = true; }
+      re[i] = v * F.hann[i]; im[i] = 0;
+    }
+    if (any) { F.run(re, im, false); for (let k = 0; k <= half; k++) pw[k] = re[k] * re[k] + im[k] * im[k]; }
+    for (let y = 0; y < H; y++) {
+      let v = 0;
+      if (any) {
+        const ka = edge[y + 1], kb = edge[y];
+        if (kb - ka <= 1) { const kc = (ka + kb) / 2, k0 = Math.min(half - 1, Math.floor(kc)), u = kc - k0; v = pw[k0] * (1 - u) + pw[k0 + 1] * u; }
+        else for (let k = Math.ceil(ka); k <= Math.min(half, Math.floor(kb)); k++) if (pw[k] > v) v = pw[k];
+      }
+      const db = 10 * Math.log10(v / ref + 1e-20) + bright, c = Math.round(clamp((db + 104) / 90, 0, 1) * 255) * 3, o = (y * W + x) * 4;
+      pix[o] = REP_LUT[c]; pix[o + 1] = REP_LUT[c + 1]; pix[o + 2] = REP_LUT[c + 2]; pix[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return cvs;
+}
+
+let repTimer = null;
+/** fast = tijdens schuiven of zoomen: het vorige spectrogram verschoven/gerekt tekenen en pas na een korte pauze opnieuw rekenen. */
+function drawRepair(fast) {
+  const c = $('repCanvas'), s = S.sel;
+  if (!c || !s || s.kind !== 'repair') return;
+  const { take, clip } = repCtx(s); if (!take) return;
+  const W = c.clientWidth, H = REP.RULER + REP.WAVE + REP.SPEC;
+  if (!W) return;
+  if (c.style.height !== H + 'px') c.style.height = H + 'px';
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const fmax = repFmax(take), dur = take.buffer.duration, xOf = (t) => (t - s.t0) / s.spx, yS = REP.RULER + REP.WAVE;
+  const key = [take.id, s.t0, s.spx, W, S.repBright, S.bypass].join('|');
+  clearTimeout(repTimer);
+  if (fast === true && S.repCache && S.repCache.key !== key && S.repCache.id === take.id) repTimer = setTimeout(() => drawRepair(), 140);
+  else if (!S.repCache || S.repCache.key !== key) S.repCache = { key, id: take.id, t0: s.t0, spx: s.spx, W, img: repSpectro(take, s.t0, s.spx, Math.round(W)) };
+  const rc = S.repCache;
+  g.imageSmoothingEnabled = rc.spx !== s.spx;
+  g.drawImage(rc.img, (rc.t0 - s.t0) / s.spx, yS, (rc.W * rc.spx) / s.spx, REP.SPEC);
+  // golfvorm
+  g.fillStyle = '#14171c'; g.fillRect(0, REP.RULER, W, REP.WAVE);
+  g.fillStyle = take.color;
+  drawWave(g, take, 0, Math.max(0, xOf(0)), Math.min(W, xOf(dur)), (x) => s.t0 + x * s.spx, s.spx, REP.RULER + REP.WAVE / 2, REP.WAVE / 2 - 3, null);
+  // buiten het deel dat in de edit klinkt: gedimd
+  if (clip) {
+    const xa = clamp(xOf(clip.offset), 0, W), xb = clamp(xOf(clip.offset + clip.dur), 0, W);
+    g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, REP.RULER, xa, H); g.fillRect(xb, REP.RULER, W - xb, H);
+  }
+  // liniaal
+  const raw = 90 * s.spx, p10 = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 5, 10].map((m) => m * p10).find((v) => v >= raw);
+  const dec = clamp(Math.ceil(-Math.log10(step)), 0, 4);
+  g.font = '10px ui-monospace, Menlo, monospace'; g.textBaseline = 'top';
+  for (let t = Math.ceil(s.t0 / step) * step; t < s.t0 + W * s.spx; t += step) {
+    const x = Math.round(xOf(t)) + 0.5;
+    g.fillStyle = 'rgba(255,255,255,0.07)'; g.fillRect(x, REP.RULER, 1, H - REP.RULER);
+    g.fillStyle = '#8b93a1'; g.fillText(fmt(t, Math.max(1, dec)), x + 3, 3);
+  }
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const f of [100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+    if (f >= fmax) continue;
+    const y = Math.round(repFy(f, fmax)) + 0.5;
+    g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(0, y, W, 1);
+    g.fillStyle = 'rgba(230,232,236,0.75)'; g.fillText(hz(f), W - 5, y - 6);
+  }
+  g.textAlign = 'left';
+  // bestaande reparaties
+  for (const r of take.repairs || []) {
+    const xa = xOf(r.t0), xb = xOf(r.t1);
+    if (xb < -2 || xa > W + 2) continue;
+    const cur = r.id === s.cur, col = r.on && !S.bypass ? '#1dd1a1' : '#8b93a1';
+    if (r.kind === 'click') {
+      const x = Math.round((xa + xb) / 2);
+      g.fillStyle = col; g.fillRect(x - (cur ? 1 : 0.5), REP.RULER, cur ? 2.5 : 1.5, H - REP.RULER);
+      g.beginPath(); g.moveTo(x - 5, REP.RULER); g.lineTo(x + 5, REP.RULER); g.lineTo(x, REP.RULER + 7); g.closePath(); g.fill();
+    } else {
+      const ya = repFy(r.f1, fmax), yb = r.f0 <= 0 ? H : repFy(r.f0, fmax);
+      if (cur) { g.fillStyle = 'rgba(29,209,161,0.14)'; g.fillRect(xa, ya, Math.max(2, xb - xa), yb - ya); }
+      g.strokeStyle = col; g.lineWidth = cur ? 2 : 1;
+      g.strokeRect(xa + 0.5, ya + 0.5, Math.max(2, xb - xa), yb - ya - 1);
+      g.fillStyle = col; g.fillRect(xa, REP.RULER, Math.max(2, xb - xa), 3);
+    }
+  }
+  // gevonden tikken (voorstellen)
+  for (const k of s.clicks || []) {
+    const x = Math.round(xOf((k.t0 + k.t1) / 2));
+    if (x < 0 || x > W) continue;
+    g.strokeStyle = '#ff9f43'; g.lineWidth = 1; g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(x + 0.5, REP.RULER); g.lineTo(x + 0.5, H); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#ff9f43'; g.beginPath(); g.moveTo(x - 5, REP.RULER); g.lineTo(x + 5, REP.RULER); g.lineTo(x, REP.RULER + 7); g.closePath(); g.fill();
+  }
+  // aangewezen gebied
+  if (s.box) {
+    const xa = xOf(s.box.t0), xb = xOf(s.box.t1), ya = repFy(s.box.f1, fmax), yb = s.box.f0 <= 0 ? H : repFy(s.box.f0, fmax);
+    g.fillStyle = 'rgba(255,255,255,0.13)'; g.fillRect(xa, ya, Math.max(1, xb - xa), yb - ya);
+    g.fillRect(xa, REP.RULER, Math.max(1, xb - xa), REP.WAVE);
+    g.setLineDash([5, 3]); g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+    g.strokeRect(xa + 0.5, ya + 0.5, Math.max(1, xb - xa), yb - ya - 1); g.setLineDash([]);
+  }
+  const pp = repPlayPos(s);
+  const cx = xOf(pp == null ? s.pos : pp);
+  if (cx >= 0 && cx <= W) { g.fillStyle = pp == null ? '#ffd32a' : '#ff5c6c'; g.fillRect(Math.round(cx), 0, pp == null ? 1 : 1.5, H); }
+  const span = W * s.spx;
+  g.fillStyle = '#c9ced8'; g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
+  g.fillText(`${take.name} · beeld ${span < 1 ? Math.round(span * 1000) + ' ms' : span.toFixed(1) + ' s'}${S.bypass ? ' · ORIGINEEL (reparaties uit)' : ''}`, 6, REP.RULER + 3);
+}
+
+function zoomRep(x, f, fast) {
+  const s = S.sel; if (!s || s.kind !== 'repair') return;
+  const { take } = repCtx(s), W = repW(), sr = take.buffer.sampleRate, t = s.t0 + x * s.spx;
+  s.spx = clamp(s.spx / f, 1 / (sr * 2), (Math.max(1, take.buffer.duration) * 1.1) / W);
+  s.t0 = t - x * s.spx;
+  drawRepair(fast);
+}
+function showRepair(r) {
+  const s = S.sel, W = repW(), span = W * s.spx, mid = (r.t0 + r.t1) / 2;
+  if (r.t0 < s.t0 || r.t1 > s.t0 + span) s.t0 = mid - span / 2;
+  s.cur = r.id || null; s.pos = Math.max(0, r.t0 - 0.5);
+}
+
+function bindRepCanvas() {
+  const c = $('repCanvas');
+  let drag = null;
+  const at = (e) => { const r = c.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  c.addEventListener('pointerdown', (e) => {
+    const s = S.sel; if (!s || s.kind !== 'repair' || e.button !== 0) return;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const p = at(e);
+    c.setPointerCapture(e.pointerId);
+    drag = { x0: p.x, y0: p.y, moved: false, pan: S.tool === 'hand' || e.altKey, t00: s.t0, wave: p.y < REP.RULER + REP.WAVE };
+  });
+  c.addEventListener('pointermove', (e) => {
+    const s = S.sel;
+    if (!drag || !s || s.kind !== 'repair') { c.style.cursor = S.tool === 'hand' || e.altKey ? 'grab' : 'crosshair'; return; }
+    const p = at(e);
+    if (!drag.moved && Math.hypot(p.x - drag.x0, p.y - drag.y0) < 4) return;
+    drag.moved = true;
+    if (drag.pan) { s.t0 = drag.t00 - (p.x - drag.x0) * s.spx; drawRepair(true); return; }
+    const { take } = repCtx(s), fmax = repFmax(take), dur = take.buffer.duration;
+    const ta = clamp(s.t0 + Math.min(drag.x0, p.x) * s.spx, 0, dur), tb = clamp(s.t0 + Math.max(drag.x0, p.x) * s.spx, 0, dur);
+    const bottom = REP.RULER + REP.WAVE + REP.SPEC - 3, top = REP.RULER + REP.WAVE + 3;
+    const yLo = Math.max(drag.y0, p.y), yHi = Math.min(drag.y0, p.y);
+    s.box = drag.wave ? { t0: ta, t1: tb, f0: 0, f1: fmax }
+      : { t0: ta, t1: tb, f0: yLo >= bottom ? 0 : Math.round(repYf(yLo, fmax)), f1: yHi <= top ? fmax : Math.round(repYf(yHi, fmax)) };
+    s.cur = null;
+    drawRepair();
+  });
+  const up = (e) => {
+    const d = drag; drag = null;
+    const s = S.sel; if (!d || !s || s.kind !== 'repair') return;
+    if (!d.moved) {
+      const { take } = repCtx(s), fmax = repFmax(take), p = at(e), t = s.t0 + p.x * s.spx;
+      const xOf = (v) => (v - s.t0) / s.spx;
+      const prop = (s.clicks || []).find((k) => Math.abs(xOf((k.t0 + k.t1) / 2) - p.x) < 6);
+      const hit = [...(take.repairs || [])].reverse().find((r) => (r.kind === 'click'
+        ? Math.abs(xOf((r.t0 + r.t1) / 2) - p.x) < 6
+        : p.x >= xOf(r.t0) - 2 && p.x <= xOf(r.t1) + 2 && (d.wave || (p.y >= repFy(r.f1, fmax) - 2 && p.y <= (r.f0 <= 0 ? 1e9 : repFy(r.f0, fmax)) + 2))));
+      if (prop) { s.box = { t0: prop.t0, t1: prop.t1, f0: 0, f1: fmax }; s.cur = null; }
+      else if (hit) { s.cur = hit.id; s.box = null; }
+      else { s.pos = clamp(t, 0, take.buffer.duration); s.cur = null; s.box = null; if (S.playing) repPlay(); }
+    } else if (s.box && s.box.t1 - s.box.t0 < 2 * s.spx) s.box = null;
+    renderInspector();
+  };
+  c.addEventListener('pointerup', up);
+  c.addEventListener('pointercancel', up);
+  c.addEventListener('wheel', (e) => {
+    const s = S.sel; if (!s || s.kind !== 'repair') return;
+    const x = at(e).x;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomRep(x, Math.exp(-e.deltaY * 0.0025), true); }
+    else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.preventDefault(); s.t0 += (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * s.spx; drawRepair(true); }
+  }, { passive: false });
+  let gs = 1;
+  c.addEventListener('gesturestart', (e) => { e.preventDefault(); gs = 1; });
+  c.addEventListener('gesturechange', (e) => { e.preventDefault(); zoomRep(at(e).x, e.scale / gs, true); gs = e.scale; });
+  c.addEventListener('gestureend', (e) => e.preventDefault());
+}
+
+/** Maak van het aangewezen gebied een reparatie. */
+function addRepair(kind) {
+  const s = S.sel; if (!s || s.kind !== 'repair' || !s.box) return;
+  const { take } = repCtx(s), bx = s.box;
+  if (kind === 'click' && bx.t1 - bx.t0 > 0.012) { toast('"Tik wegwerken" is voor tikken tot 12 ms. Zoom in en sleep een smaller gebied, of gebruik Dempen of Opvullen.'); return; }
+  const r = kind === 'click' ? { id: newId(), kind, t0: bx.t0, t1: bx.t1, on: true }
+    : { id: newId(), kind, t0: bx.t0, t1: bx.t1, f0: bx.f0, f1: bx.f1, amount: kind === 'fill' ? 1 : S.repAmt, on: true };
+  s.box = null; s.cur = r.id;
+  mutateRepairs(take, () => take.repairs.push(r));
+  toast(`${REP_NAMES[kind]}. Spatie: beluisteren · X: vergelijken met het origineel · ⌘Z: ongedaan maken`);
+}
+function searchClicks(whole) {
+  const s = S.sel; if (!s || s.kind !== 'repair') return;
+  const { take, clip } = repCtx(s);
+  let a = whole ? (clip ? clip.offset : 0) : s.t0, b = whole ? (clip ? clip.offset + clip.dur : take.buffer.duration) : s.t0 + repW() * s.spx;
+  if (!whole && clip) { a = Math.max(a, clip.offset); b = Math.min(b, clip.offset + clip.dur); }
+  busy(true, 'Tikken zoeken…');
+  setTimeout(() => {
+    try {
+      const done = (take.repairs || []).filter((r) => r.kind === 'click');
+      s.clicks = findClicks(take, a, b, S.repSens).filter((k) => !done.some((r) => r.t0 < k.t1 && r.t1 > k.t0));
+    } finally { busy(false); }
+    renderInspector();
+    toast(s.clicks.length ? `${s.clicks.length} mogelijke tik${s.clicks.length === 1 ? '' : 'ken'} gevonden (oranje). Beluister en accepteer ze per stuk.` : 'Geen tikken gevonden. Probeer een hogere gevoeligheid.');
+  }, 30);
+}
+function acceptClicks(list) {
+  const s = S.sel, { take } = repCtx(s);
+  if (!list.length) return;
+  s.clicks = s.clicks.filter((k) => !list.includes(k));
+  const rs = list.map((k) => ({ id: newId(), kind: 'click', t0: k.t0, t1: k.t1, on: true }));
+  s.cur = rs.length === 1 ? rs[0].id : null; s.box = null;
+  mutateRepairs(take, () => take.repairs.push(...rs));
+  toast(`${rs.length} tik${rs.length === 1 ? '' : 'ken'} weggewerkt`);
+}
+/** Het aangewezen stuk in de edit vervangen door dezelfde plek uit een andere take (zoeken, wisselen, fase uitlijnen). */
+function repReplace(other) {
+  const s = S.sel; if (!s || s.kind !== 'repair') return;
+  const { clip, tl } = repCtx(s), bx = s.box;
+  if (!clip || !bx || !other) return;
+  if (bx.t0 < clip.offset - 1e-6 || bx.t1 > clip.offset + clip.dur + 1e-6) { toast('Het gebied moet binnen het lichte deel liggen: het stuk van de take dat in de edit klinkt'); return; }
+  const din = tl(bx.t0), dout = tl(bx.t1);
+  if (dout - din < 0.05) { toast('Sleep een stuk van minstens 50 ms'); return; }
+  busy(true, `Dezelfde plek zoeken in "${other.name}"…`);
+  setTimeout(() => {
+    try {
+      const r1 = sourcePosFor(other, din), keep = other.sync;
+      other.sync = din - r1.s;
+      const r2 = sourcePosFor(other, dout);
+      other.sync = keep;
+      busy(false);
+      if (r2.s - r1.s < 0.02) { toast(`Kon dit stuk niet terugvinden in "${other.name}"`); return; }
+      patchEdit(other, din, dout, r1.s, r2.s, null, true);
+      const sel = S.sel, nc = sel && sel.kind === 'junction' ? clipOf(sel.b) : sel && sel.kind === 'clip' ? clipOf(sel.id) : null;
+      if (!nc || nc.takeId !== other.id) return;
+      // fase: het begin van het nieuwe stuk gelijk met wat ervoor klinkt, het eind met wat erna komt
+      const j1 = junctions().find((j) => j.b === nc);
+      if (j1) { const p = phaseLag(j1); if (!p.err && p.score > 0.3) nc.offset = clamp(nc.offset + p.best / p.sr, 0, Math.max(0, other.buffer.duration - nc.dur)); }
+      const j2 = junctions().find((j) => j.a === nc);
+      if (j2) {
+        const p = phaseLag(j2);
+        if (!p.err && p.score > 0.3 && p.best) {
+          const dlt = p.best / p.sr, from = j2.b.start - 1e-9;
+          nc.dur -= dlt;
+          for (const c of S.clips) if (c !== nc && c.start >= from) c.start -= dlt;
+          for (const mk of S.markers) if (mk.t >= from) mk.t -= dlt;
+        }
+      }
+      afterEdit();
+      if (!r1.found || !r2.found) setTimeout(() => toast('Let op: de plek in de andere take kon niet zeker worden gevonden. Controleer de wissel.'), 2800);
+    } finally { busy(false); }
+  }, 30);
+}
+
+function inspectRepair(el, s) {
+  const { take, clip } = repCtx(s);
+  const reps = [...(take.repairs || [])].sort((a, b) => a.t0 - b.t0), bx = s.box;
+  const others = S.takes.filter((t) => t !== take);
+  const SENS = [[3, 'laag'], [5, 'normaal'], [7, 'hoog'], [9, 'zeer hoog']];
+  const short = bx && bx.t1 - bx.t0 <= 0.012;
+  el.innerHTML = `
+    <div class="insp-head"><h2>Bijgeluiden repareren</h2><span>${esc(take.name)}${clip ? ' · het lichte deel klinkt in de edit' : ''} · je opname zelf wordt niet aangepast</span></div>
+    <canvas id="repCanvas"></canvas>
+    <div class="row">
+      <span class="group">Zoom <button id="rpZo">−</button><button id="rpZi">+</button><button id="rpPrev" title="Eerder">◀</button><button id="rpNext" title="Later">▶</button></span>
+      <label>Helderheid <select id="rpBright">${[[0, 'normaal'], [12, 'meer'], [24, 'veel (zachte passages)']].map(([v, l]) => `<option value="${v}"${v === S.repBright ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      <button id="rpPlay" class="primary" title="Speelt de take rond het gebied of de gekozen reparatie, anders vanaf de gele cursor. Nogmaals: stop.">▶ Beluister <kbd>Spatie</kbd></button>
+      ${clip ? '<button id="rpPlayEdit" title="Speelt de edit rond dit stuk, met de overgangen erbij">▶ In de edit</button>' : ''}
+      <button id="rpAB"${S.bypass ? ' class="act"' : ''} title="Vergelijk: schakel alle reparaties tijdelijk uit en hoor het origineel">${S.bypass ? 'A/B: je hoort het origineel' : 'A/B: origineel'} <kbd>X</kbd></button>
+      <button id="rpClose">Sluiten</button>
+    </div>
+    <div class="row">
+      ${bx ? `<b>Gebied ${fmt(bx.t0, 2)} – ${fmt(bx.t1, 2)} · ${bx.f0 <= 0 ? '0 Hz' : hz(bx.f0)} – ${hz(bx.f1)}</b>
+        <button id="rpAtt" class="primary" title="Maakt dit gebied zachter. Goed voor verkeer, brom of een geluid dat je niet helemaal weg wilt hebben.">Dempen</button>
+        <label title="Hoe sterk Dempen werkt: 100% = 48 dB zachter">Sterkte <input type="range" id="rpAmt" min="10" max="100" step="5" value="${Math.round(S.repAmt * 100)}" style="width:110px"> <span id="rpAmtV">${Math.round(S.repAmt * 100)}%</span></label>
+        <button id="rpFill" class="primary" title="Brengt alles wat in dit gebied boven de omgeving uitsteekt terug naar het niveau van vlak ervoor en erna. De muziek die doorklinkt blijft staan. Goed voor een kuchje of stoelgeschuif.">Opvullen uit de omgeving</button>
+        <button id="rpClick"${short ? '' : ' disabled'} title="Voor een tik van hooguit 12 ms: het stukje wordt vervangen door wat de muziek ervoor en erna voorspelt">Tik wegwerken</button>
+        ${clip && others.length ? `<span class="group" title="Vervangt dit stuk in de edit door dezelfde plek uit een andere take, met crossfades">of vervang door <select id="rpOther">${others.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><button id="rpRepl">Vervang</button></span>` : ''}`
+      : `<b>Sleep in het spectrogram een rechthoek om het bijgeluid</b><span class="hint">Slepen in de golfvorm erboven pakt alle frequenties. Daarna kies je <i>Dempen</i>, <i>Opvullen</i> of <i>Tik wegwerken</i>.</span>`}
+    </div>
+    <div class="row">
+      <span class="group">Tikken zoeken <button id="rpFind">in beeld</button><button id="rpFindAll">${clip ? 'in de hele clip' : 'in de hele take'}</button></span>
+      <label>Gevoeligheid <select id="rpSens">${SENS.map(([v, l]) => `<option value="${v}"${v === S.repSens ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${s.clicks.length ? `<button id="rpAccAll" class="primary">Accepteer alle ${s.clicks.length}</button><button id="rpRejAll">Negeer alle</button>` : ''}
+    </div>
+    ${s.clicks.length ? `<div class="plist">${s.clicks.slice(0, 60).map((k, i) => `
+      <div class="pitem">
+        <span class="pname" style="color:var(--accent2)">Tik? ${fmt((k.t0 + k.t1) / 2, 3)}</span>
+        <span class="pmeta">${((k.t1 - k.t0) * 1000).toFixed(1)} ms · ${k.score >= 100 ? 'heel duidelijk' : k.score >= 40 ? 'duidelijk' : 'twijfelachtig'}</span>
+        <button data-kgo="${i}">Toon</button><button data-kplay="${i}">▶</button><button data-kacc="${i}" class="primary">Accepteer</button><button data-krej="${i}">Negeer</button>
+      </div>`).join('')}${s.clicks.length > 60 ? `<p class="hint">… en nog ${s.clicks.length - 60}. Accepteer of negeer er een paar, of verlaag de gevoeligheid.</p>` : ''}</div>` : ''}
+    ${reps.length ? `<div class="insp-head" style="margin-top:14px"><h2>Reparaties in deze take</h2><span>${reps.length} · vink uit om er een tijdelijk uit te zetten</span></div>
+    <div class="plist">${reps.map((r) => `
+      <div class="pitem${r.id === s.cur ? ' cur' : ''}${r.on ? '' : ' off'}">
+        <label title="Aan/uit"><input type="checkbox" data-ron="${r.id}"${r.on ? ' checked' : ''}></label>
+        <span class="pname">${REP_NAMES[r.kind]} · ${fmt(r.t0, 2)}</span>
+        <span class="pmeta">${r.kind === 'click' ? `${((r.t1 - r.t0) * 1000).toFixed(1)} ms` : `${(r.t1 - r.t0).toFixed(2)} s · ${r.f0 <= 0 ? '0 Hz' : hz(r.f0)} – ${hz(r.f1)}`}</span>
+        ${r.kind !== 'click' ? `<label>Sterkte <input type="range" data-ramt="${r.id}" min="10" max="100" step="5" value="${Math.round(r.amount * 100)}" style="width:100px"> <span>${Math.round(r.amount * 100)}%</span></label>` : ''}
+        <button data-rgo="${r.id}">Toon</button><button data-rplay="${r.id}">▶</button><button data-rdel="${r.id}" class="danger">Verwijder</button>
+      </div>`).join('')}</div>` : ''}
+    <p class="hint">Hoog in beeld = hoge tonen. Muziek zie je als horizontale lijnen; een kuchje of stoel als een verticale veeg, een tik als een dunne verticale streep. Klik om de cursor te zetten, <kbd>Spatie</kbd> speelt rond het gebied. Knijp of <kbd>⌘</kbd> + twee vingers om te zoomen, twee vingers opzij (of <kbd>⌥</kbd>-slepen) om te schuiven. Groen = gerepareerd, oranje = voorstel. <kbd>Delete</kbd> verwijdert de gekozen reparatie.</p>`;
+  const W = () => repW(), redraw = () => { drawRepair(); };
+  $('rpZo').onclick = () => zoomRep(W() / 2, 1 / 2);
+  $('rpZi').onclick = () => zoomRep(W() / 2, 2);
+  $('rpPrev').onclick = () => { s.t0 -= W() * s.spx * 0.5; redraw(); };
+  $('rpNext').onclick = () => { s.t0 += W() * s.spx * 0.5; redraw(); };
+  $('rpBright').onchange = (e) => { S.repBright = +e.target.value; saveSettings(); redraw(); };
+  $('rpPlay').onclick = () => { if (S.playing) stop(); else repPlay(); };
+  if (clip) $('rpPlayEdit').onclick = () => {
+    const { tl } = repCtx(s), cur = s.cur && reps.find((r) => r.id === s.cur), sp = bx || cur;
+    if (sp) play(Math.max(0, tl(sp.t0) - S.preroll), tl(sp.t1) + S.preroll); else play(Math.max(0, tl(s.pos)));
+    renderInspector();
+  };
+  $('rpAB').onclick = () => setBypass(!S.bypass);
+  $('rpClose').onclick = () => select(clip ? { kind: 'clip', id: clip.id } : { kind: 'take', id: take.id });
+  if (bx) {
+    $('rpAtt').onclick = () => addRepair('atten');
+    $('rpFill').onclick = () => addRepair('fill');
+    $('rpClick').onclick = () => addRepair('click');
+    $('rpAmt').oninput = (e) => { S.repAmt = +e.target.value / 100; $('rpAmtV').textContent = e.target.value + '%'; };
+    $('rpAmt').onchange = saveSettings;
+    if ($('rpRepl')) $('rpRepl').onclick = () => repReplace(takeOf(+$('rpOther').value));
+  }
+  $('rpFind').onclick = () => searchClicks(false);
+  $('rpFindAll').onclick = () => searchClicks(true);
+  $('rpSens').onchange = (e) => { S.repSens = +e.target.value; saveSettings(); };
+  if ($('rpAccAll')) { $('rpAccAll').onclick = () => acceptClicks([...s.clicks]); $('rpRejAll').onclick = () => { s.clicks = []; renderInspector(); }; }
+  const kAt = (b, key) => s.clicks[+b.dataset[key]];
+  el.querySelectorAll('[data-kgo]').forEach((b) => { b.onclick = () => { const k = kAt(b, 'kgo'); showRepair(k); s.cur = null; s.box = { t0: k.t0, t1: k.t1, f0: 0, f1: repFmax(take) }; if (W() * s.spx > 0.5) { s.spx = 0.2 / W(); s.t0 = (k.t0 + k.t1) / 2 - 0.1; } renderInspector(); }; });
+  el.querySelectorAll('[data-kplay]').forEach((b) => { b.onclick = () => { const k = kAt(b, 'kplay'); playSrc(take, k.t0 - 1, k.t1 + 1); }; });
+  el.querySelectorAll('[data-kacc]').forEach((b) => { b.onclick = () => acceptClicks([kAt(b, 'kacc')]); });
+  el.querySelectorAll('[data-krej]').forEach((b) => { b.onclick = () => { s.clicks.splice(+b.dataset.krej, 1); renderInspector(); }; });
+  const rOf = (id) => take.repairs.find((r) => r.id === +id);
+  el.querySelectorAll('[data-ron]').forEach((b) => { b.onchange = () => mutateRepairs(take, () => { rOf(b.dataset.ron).on = b.checked; }); });
+  el.querySelectorAll('[data-ramt]').forEach((b) => { b.onchange = () => { s.cur = +b.dataset.ramt; mutateRepairs(take, () => { rOf(b.dataset.ramt).amount = +b.value / 100; }); }; });
+  el.querySelectorAll('[data-rgo]').forEach((b) => { b.onclick = () => { showRepair(rOf(b.dataset.rgo)); s.box = null; renderInspector(); }; });
+  el.querySelectorAll('[data-rplay]').forEach((b) => { b.onclick = () => { const r = rOf(b.dataset.rplay); s.cur = r.id; playSrc(take, r.t0 - 1, r.t1 + 1); renderInspector(); }; });
+  el.querySelectorAll('[data-rdel]').forEach((b) => { b.onclick = () => removeRepair(take, +b.dataset.rdel); });
+  bindRepCanvas();
+  requestAnimationFrame(drawRepair);
+}
+
 /* ---------- interactie tijdlijn ---------- */
 function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function laneAt(y) {
@@ -3354,6 +4101,7 @@ $('srcBtn').onclick = (e) => setSourcePoint(e.shiftKey);
 $('srcOutBtn').onclick = () => setSourcePoint(true);
 $('alignHereBtn').onclick = () => alignTakesHere();
 $('alignBtn').onclick = openAlign;
+$('repairBtn').onclick = openRepair;
 $('markBtn').onclick = () => addMarker();
 $('deleteBtn').onclick = () => deleteSelection();
 $('undoBtn').onclick = undo;
@@ -3395,6 +4143,8 @@ document.addEventListener('keydown', (e) => {
     case 'b': case 'B': setSourcePoint(e.shiftKey); break;
     case 'h': case 'H': alignTakesHere(); break;
     case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
+    case 'r': case 'R': openRepair(); break;
+    case 'x': case 'X': if ((S.sel && S.sel.kind === 'repair') || S.bypass) setBypass(!S.bypass); else toast('A/B (met en zonder reparaties) werkt in het reparatievenster: druk R'); break;
     case 'g': case 'G': if (sj) toggleTail(sj); else toast('Klik eerst op een crossfade (⋈) en druk dan G voor een galmstaart'); break;
     case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(e.altKey); break;
     case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
@@ -3585,14 +4335,14 @@ async function saveProject() {
       for (const t of S.takes) {
         if (t.stored) continue;
         setSaveState(`audio van "${t.name}" bewaren…`);
-        await dbPut('files', t.file || encodeWav(t.buffer, 32), t.fileKey);
+        await dbPut('files', t.file || withOriginal(t, () => encodeWav(t.buffer, 32)), t.fileKey);
         t.stored = true; t.file = null;
       }
       const p = S.project;
       await dbPut('projects', {
         id: p.id, name: p.name, created: p.created, updated: Date.now(),
         sr: S.ac ? S.ac.sampleRate : null,
-        takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration, srcRate: t.srcRate || null })),
+        takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration, srcRate: t.srcRate || null, repairs: t.repairs || [] })),
         clips: S.clips.map((c) => ({ ...c })), markers: S.markers, nextId: S.nextId,
         view: { pps: S.pps, view: S.view, playhead: S.playhead }, length: editEnd(),
       });
@@ -3679,7 +4429,7 @@ function resetWorkspace() {
   stop();
   S.takes = []; S.clips = []; S.markers = []; S.undo = []; S.redo = [];
   S.pts = { dest: null, destOut: null, src: null, srcOut: null };
-  S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0;
+  S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0; S.bypass = false; S.repCache = null;
   updateProjectLine(); setSaveState('wordt automatisch bewaard');
   buildHeads(); S.loading = true; afterEdit(); S.loading = false;
 }
@@ -3713,8 +4463,10 @@ async function loadProject(id) {
       const buf = await decodeAudio(ac, await (blob.arrayBuffer ? blob.arrayBuffer() : new Response(blob).arrayBuffer()));
       const data = [];
       for (let ch = 0; ch < buf.numberOfChannels; ch++) data.push(buf.getChannelData(ch));
-      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true });
+      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true, repairs: tk.repairs || [], stash: [] });
     }
+    S.bypass = false;
+    for (const t of takes) if (t.repairs.some((r) => r.on)) { busy(true, `Reparaties toepassen: ${t.name}…`); applyRepairs(t); }
     S.takes = takes;
     S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
     S.markers = rec.markers || [];
@@ -3790,7 +4542,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb, tail: S.tailDef }));
+  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb, tail: S.tailDef, repAmt: S.repAmt, repSens: S.repSens, repBright: S.repBright }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -3807,6 +4559,9 @@ function loadSettings() {
   if (['auto', 'always', 'off'].includes(o.dither)) S.dither = o.dither;
   if (typeof o.norm === 'boolean') S.normalize = o.norm;
   if (typeof o.normDb === 'number') S.normDb = o.normDb;
+  if (typeof o.repAmt === 'number') S.repAmt = clamp(o.repAmt, 0.1, 1);
+  if ([3, 5, 7, 9].includes(o.repSens)) S.repSens = o.repSens;
+  if ([0, 12, 24].includes(o.repBright)) S.repBright = o.repBright;
   if (o.tail && typeof o.tail.len === 'number' && typeof o.tail.gain === 'number') S.tailDef = { len: clamp(o.tail.len, TAIL_MIN, TAIL_MAX), gain: o.tail.gain, lp: +o.tail.lp || 0 };
 }
 function applySettingsUI() {
