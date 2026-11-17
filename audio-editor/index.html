@@ -454,7 +454,7 @@ const S = {
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
   meter: 0,
-  tailDef: { len: 2.5, gain: -6, lp: 0 }, pick: null,
+  tailDef: { len: 2.5, gain: -6, lp: 0, mode: 'blend' }, pick: null,
   bypass: false, repAmt: 0.6, repSens: 5, repBright: 0, repCache: null,
 };
 
@@ -690,7 +690,13 @@ function junctionOf(aId, bId) { return junctions().find((j) => j.a.id === aId &&
        donor = { takeId, offset }: in plaats van A zelf een stuk galm uit een take waar het koor echt stopt
    Tijdens de crossfade zakt A naar het staartvolume (de staart komt op terwijl A uitfadet); daarna sterft hij uit.
    De staart is een eigen laag in afspelen, voorvertoning en export; clips en bronnen veranderen niet. */
-const TAIL_MIN = 0.5, TAIL_MAX = 8;
+const TAIL_MIN = 0.5, TAIL_MAX = 8, TAIL_MAX_NAT = 30;
+/* Twee standen:
+   'blend'   : wegmengen — de staart begint op het ingestelde volume en zakt snel weg (voor wissels midden in een frase);
+   'natural' : natuurlijk uitklinken — de opname klinkt onbewerkt door op vol volume, zonder filter, tot de galm weg is;
+               alleen de laatste halve seconde krijgt een korte fade. Voor delen na een fermate, variaties, slotakkoorden. */
+const isNat = (tl) => tl && tl.mode === 'natural';
+const tailMax = (tl) => (isNat(tl) ? TAIL_MAX_NAT : TAIL_MAX);
 function tailLayers(env = envelopes()) {
   const out = [];
   for (const j of junctions()) {
@@ -703,7 +709,7 @@ function tailLayers(env = envelopes()) {
     const avail = Math.max(0, take.buffer.duration - src0 - (E - L0));     // bronmateriaal na het eind van A
     const len = Math.min(tl.len, avail);
     out.push({ j, a, tl, take, donor: !!dn, L0, E, L1: E + len, src0, avail, fout: e.fout, shape: e.foutShape,
-      g: dbLin((dn ? 0 : a.gain || 0) + (tl.gain || 0)), lp: tl.lp || 0, dead: len < 0.02 });
+      g: dbLin((dn ? 0 : a.gain || 0) + (tl.gain || 0)), lp: isNat(tl) ? 0 : tl.lp || 0, nat: isNat(tl), dead: len < 0.02 });
   }
   return out;
 }
@@ -712,9 +718,47 @@ const tailOf = (j, env) => tailLayers(env).find((L) => L.a === j.a) || null;
 function tailEnvAt(L, t) {
   if (L.dead || t < L.L0 || t >= L.L1) return 0;
   if (t < L.E) return L.g * (1 - SHAPES[L.shape].f((L.E - t) / L.fout));
+  if (L.nat) {                                   // onbewerkt laten doorklinken; alleen het allerlaatste stukje uitfaden
+    const F = Math.min(0.5, (L.L1 - L.E) / 3), r = L.L1 - t;
+    return r >= F ? L.g : L.g * (0.5 - 0.5 * Math.cos(Math.PI * r / F));
+  }
   const v = (t - L.E) / (L.L1 - L.E);
   // eigen take: eerst snel zakken, dan lang zacht na (de take zingt door); donor: de galm sterft zelf al uit
   return L.g * (L.donor ? 0.5 + 0.5 * Math.cos(Math.PI * v) : (1 - v) * (1 - v));
+}
+/**
+ * Hoe lang klinkt de galm na de knip nog door? Meet het niveau (per 50 ms) van wat de staart afspeelt en zoek
+ * waar het tot op de ruis van de opname is gezakt (de stilste stukken van de take, +4 dB). null = niet te meten.
+ */
+function galmLength(L) {
+  const take = L.take, d = take.data, sr = take.buffer.sampleRate, n = d[0].length, hop = Math.round(sr * 0.05);
+  const rmsAt = (s0) => { let q = 0; const a = Math.max(0, s0), b = Math.min(n, s0 + hop); if (b <= a) return 0; for (let k = a; k < b; k++) { let v = 0; for (const ch of d) v += ch[k]; v /= d.length; q += v * v; } return Math.sqrt(q / (b - a)); };
+  const all = []; for (let s0 = 0; s0 + hop <= n; s0 += hop * 4) all.push(rmsAt(s0));
+  all.sort((x, y) => x - y);
+  const floor = all[Math.floor(all.length * 0.05)] || 0, th = Math.max(floor * dbLin(4), 1e-5);
+  const start = Math.round((L.src0 + (L.E - L.L0)) * sr), maxF = Math.floor(Math.min(L.avail, TAIL_MAX_NAT) / 0.05);
+  const fr = []; for (let i = 0; i < maxF; i++) fr.push(rmsAt(start + i * hop));
+  if (!fr.length) return null;
+  for (let i = 0; i < fr.length; i++) {                 // eerste moment waarna het een hele seconde onder de drempel blijft
+    let quiet = true;
+    for (let k = i; k < Math.min(fr.length, i + 20); k++) if (fr[k] > th) { quiet = false; break; }
+    if (quiet && i + 20 <= fr.length) return { len: clamp(i * 0.05 + 0.5, TAIL_MIN, TAIL_MAX_NAT), found: true };
+  }
+  return { len: clamp(fr.length * 0.05, TAIL_MIN, TAIL_MAX_NAT), found: false };
+}
+/** Natuurlijk uitklinken: vol volume, geen filter, lengte tot de galm weg is. */
+function setNatural(j, on) {
+  const tl = j.a.tail; if (!tl) return;
+  let note = '';
+  mutate(() => {
+    if (!on) { tl.mode = 'blend'; tl.len = Math.min(tl.len, TAIL_MAX); if (tl.gain === 0) tl.gain = -6; return; }
+    tl.mode = 'natural'; tl.gain = 0; tl.lp = 0; tl.len = TAIL_MAX_NAT;
+    const L = tailOf(j), r = L && !L.dead ? galmLength(L) : null;
+    if (r) { tl.len = r.len; note = r.found ? `De galm is na ${r.len.toFixed(1)} s weg; zo lang klinkt de opname door.` : `De opname houdt na ${r.len.toFixed(1)} s op; tot daar klinkt hij door.`; }
+    else tl.len = 3;
+  });
+  rememberTail(tl);
+  if (on) toast('Natuurlijk uitklinken: de opname klinkt onbewerkt door. ' + note);
 }
 /** Eind van wat er klinkt: de edit plus een eventuele galmstaart die voorbij de laatste clip doorloopt. */
 function mixEnd() { return tailLayers().reduce((m, L) => (L.dead ? m : Math.max(m, L.L1)), editEnd()); }
@@ -727,12 +771,13 @@ function biquadLP(fc, sr) {
 }
 function toggleTail(j) {
   mutate(() => { if (j.a.tail) delete j.a.tail; else j.a.tail = { ...S.tailDef }; });
+  if (j.a.tail && isNat(j.a.tail)) { const L = tailOf(j), r = L && !L.dead ? galmLength(L) : null; if (r) { j.a.tail.len = r.len; S.dirty = true; renderInspector(); } }
   const L = j.a.tail && tailOf(j);
   toast(!j.a.tail ? 'Galmstaart uit'
     : L && L.dead ? 'Galmstaart aan, maar de take houdt hier op: er is geen galm om te laten doorklinken. Kies een donor-galm.'
     : `Galmstaart aan: "${takeOf(j.a.takeId).name}" klinkt ${L.L1 - L.E < j.a.tail.len - 0.05 ? (L.L1 - L.E).toFixed(1) + ' s (tot het eind van de take)' : j.a.tail.len.toFixed(1) + ' s'} door onder de nieuwe take`);
 }
-function rememberTail(tl) { S.tailDef = { len: tl.len, gain: tl.gain, lp: tl.lp || 0 }; saveSettings(); }
+function rememberTail(tl) { S.tailDef = { len: tl.len, gain: tl.gain, lp: tl.lp || 0, mode: isNat(tl) ? 'natural' : 'blend' }; saveSettings(); }
 /** Donor-galm: het in een take geselecteerde stuk (waar het koor stopt) komt onder de overgang te liggen. */
 function applyDonor() {
   const pk = S.pick, r = S.range;
@@ -742,11 +787,11 @@ function applyDonor() {
   if (!a || !tk || !junctionOf(pk.a, pk.b)) return;
   const t0 = Math.min(r.t0, r.t1), t1 = Math.max(r.t0, r.t1);
   mutate(() => {
-    a.tail = { ...(a.tail || S.tailDef), gain: a.tail && a.tail.donor ? a.tail.gain : 0, len: clamp(t1 - t0, TAIL_MIN, TAIL_MAX), donor: { takeId: tk.id, offset: Math.max(0, t0 - tk.sync) } };
+    a.tail = { ...(a.tail || S.tailDef), gain: a.tail && a.tail.donor ? a.tail.gain : 0, len: clamp(t1 - t0, TAIL_MIN, tailMax(a.tail || S.tailDef)), donor: { takeId: tk.id, offset: Math.max(0, t0 - tk.sync) } };
     S.range = null;
     S.sel = { kind: 'junction', a: pk.a, b: pk.b };
   });
-  toast(`Donor-galm uit "${tk.name}" (${fmt(t0 - tk.sync, 1)} in de take, ${clamp(t1 - t0, TAIL_MIN, TAIL_MAX).toFixed(1)} s) ligt nu onder de overgang. Beluister met A.`);
+  toast(`Donor-galm uit "${tk.name}" (${fmt(t0 - tk.sync, 1)} in de take, ${a.tail.len.toFixed(1)} s) ligt nu onder de overgang. Beluister met A.`);
 }
 
 /**
@@ -1836,7 +1881,7 @@ function drawBase() {
     g.fillRect(Math.round(xb) - 1.5, by, 3, TAIL_H);
     if (xb - xE > 70) {
       g.font = '10px ' + UI_FONT; g.textBaseline = 'top'; g.textAlign = 'right';
-      g.fillText(`${L.donor ? 'donor-galm' : 'galm'} ${(L.L1 - L.E).toFixed(1)} s`, xb - 5, by + 2);
+      g.fillText(`${L.donor ? 'donor-galm' : 'galm'}${L.nat ? ', origineel' : ''} ${(L.L1 - L.E).toFixed(1)} s`, xb - 5, by + 2);
       g.textAlign = 'left';
     }
   });
@@ -2297,11 +2342,14 @@ function tailRows(j) {
   const L = tailOf(j), dn = L && L.donor ? takeOf(tl.donor.takeId) : null;
   const picking = S.pick && S.pick.a === j.a.id;
   const short = L && !L.dead && L.L1 - L.E < tl.len - 0.05;
+  const nat = isNat(tl), MX = tailMax(tl);
   return `<div class="row">${head}
-      <label>Lengte <input type="range" id="tlLenR" min="${TAIL_MIN}" max="${TAIL_MAX}" step="0.1" value="${tl.len}" style="width:140px"><input type="number" id="tlLen" min="${TAIL_MIN}" max="${TAIL_MAX}" step="0.1" value="${tl.len.toFixed(1)}" style="width:60px"> s</label>
+      <label title="Natuurlijk uitklinken: je hoort de opname zelf, onbewerkt, op vol volume tot de galm weg is (voor een nieuw deel na een fermate, variaties). Wegmengen: de staart zakt snel weg onder de nieuwe take (voor wissels midden in een frase).">Verloop <select id="tlMode"><option value="natural"${nat ? ' selected' : ''}>Natuurlijk uitklinken (origineel)</option><option value="blend"${nat ? '' : ' selected'}>Wegmengen onder de nieuwe take</option></select></label>
+      <label>Lengte <input type="range" id="tlLenR" min="${TAIL_MIN}" max="${MX}" step="0.1" value="${tl.len}" style="width:140px"><input type="number" id="tlLen" min="${TAIL_MIN}" max="${MX}" step="0.1" value="${tl.len.toFixed(1)}" style="width:60px"> s</label>
+      ${nat ? '<button id="tlAuto" title="Meet waar de galm in de opname tot op de ruis is gezakt en zet de lengte daarop">Tot de galm weg is</button>' : ''}
       <label>Volume <input type="range" id="tlGainR" min="-30" max="6" step="0.5" value="${tl.gain}" style="width:110px"><input type="number" id="tlGain" min="-60" max="12" step="0.5" value="${tl.gain.toFixed(1)}" style="width:64px"> dB</label>
-      <label title="Laagdoorlaatfilter op de staart: medeklinkers en directe klank verdwijnen, de (doffe) galm blijft. Lager = doffer."><input type="checkbox" id="tlLpOn"${tl.lp ? ' checked' : ''}> Doffer</label>
-      ${tl.lp ? `<label>tot <input type="number" id="tlLp" min="200" max="12000" step="100" value="${tl.lp}"> Hz</label>` : ''}
+      ${nat ? '' : `<label title="Laagdoorlaatfilter op de staart: medeklinkers en directe klank verdwijnen, de (doffe) galm blijft. Lager = doffer."><input type="checkbox" id="tlLpOn"${tl.lp ? ' checked' : ''}> Doffer</label>
+      ${tl.lp ? `<label>tot <input type="number" id="tlLp" min="200" max="12000" step="100" value="${tl.lp}"> Hz</label>` : ''}`}
       <button id="tlSolo" title="Speelt alleen de galmstaart, zonder de clips">▶ Alleen de galm</button>
     </div>
     <div class="row">
@@ -2311,6 +2359,7 @@ function tailRows(j) {
       <span class="hint">${picking ? '<b>Sleep nu in een take-baan</b> over de galm: begin waar het koor stopt en sleep zo ver als de galm moet duren.'
         : L && L.dead ? '<b>Let op:</b> deze take houdt bij de knip op, er is geen galm om te laten doorklinken. Kies een donor-galm.'
         : short ? `De ${dn ? 'donor-take' : 'take'} houdt ${(L.L1 - L.E).toFixed(1)} s na de knip op; langer dan dat kan de galm dus niet klinken.`
+        : nat ? 'Je hoort de opname zelf, onbewerkt; alleen de laatste halve seconde fadet uit. De lengte van de crossfade is de fade-in van de nieuwe take.'
         : 'De lichte strook onderin de EDIT-baan is de galm; sleep het eind om de lengte te veranderen.'}</span>
     </div>`;
 }
@@ -2323,11 +2372,18 @@ function bindTailRows(el, j) {
   const done = () => { live.undo = false; rememberTail(a.tail); afterEdit(); };
   $('tlLenR').oninput = (e) => liveSet(() => { a.tail.len = +e.target.value; $('tlLen').value = a.tail.len.toFixed(1); });
   $('tlLenR').onchange = done;
-  $('tlLen').onchange = (e) => { mutate(() => { a.tail.len = clamp(+e.target.value || S.tailDef.len, TAIL_MIN, TAIL_MAX); }); rememberTail(a.tail); };
+  $('tlLen').onchange = (e) => { mutate(() => { a.tail.len = clamp(+e.target.value || S.tailDef.len, TAIL_MIN, tailMax(a.tail)); }); rememberTail(a.tail); };
+  $('tlMode').onchange = (e) => setNatural(j, e.target.value === 'natural');
+  if ($('tlAuto')) $('tlAuto').onclick = () => {
+    const L = tailOf(j), r = L && !L.dead ? galmLength(L) : null;
+    if (!r) { toast('Er is hier geen galm om te meten'); return; }
+    mutate(() => { a.tail.len = r.len; }); rememberTail(a.tail);
+    toast(r.found ? `De galm is na ${r.len.toFixed(1)} s tot op de ruis gezakt` : `De opname houdt na ${r.len.toFixed(1)} s op; langer kan niet`);
+  };
   $('tlGainR').oninput = (e) => liveSet(() => { a.tail.gain = +e.target.value; $('tlGain').value = a.tail.gain.toFixed(1); });
   $('tlGainR').onchange = done;
   $('tlGain').onchange = (e) => { mutate(() => { a.tail.gain = clamp(+e.target.value || 0, -60, 12); }); rememberTail(a.tail); };
-  $('tlLpOn').onchange = (e) => { mutate(() => { a.tail.lp = e.target.checked ? (S.tailDef.lp || 2500) : 0; }); if (a.tail.lp) rememberTail(a.tail); };
+  if ($('tlLpOn')) $('tlLpOn').onchange = (e) => { mutate(() => { a.tail.lp = e.target.checked ? (S.tailDef.lp || 2500) : 0; }); if (a.tail.lp) rememberTail(a.tail); };
   if ($('tlLp')) $('tlLp').onchange = (e) => { mutate(() => { a.tail.lp = clamp(Math.round(+e.target.value || 2500), 200, 12000); }); rememberTail(a.tail); };
   $('tlSolo').onclick = () => { if (S.playing) { stop(); return; } playTailOnly(j); };
   $('tlDonor').onclick = () => {
@@ -3980,7 +4036,7 @@ cv.addEventListener('pointerdown', (e) => {
     const h = hitEdit(x, y);
     if (!h) { d.type = 'pan'; d.view0 = S.view; select(null); }   // leeg vlak: slepen schuift het beeld, klikken zet de afspeelkop
     else if (h.type === 'tail') {
-      d.type = 'tail'; d.a = h.L.a; d.max = Math.min(TAIL_MAX, h.L.avail);
+      d.type = 'tail'; d.a = h.L.a; d.max = Math.min(tailMax(h.L.tl), h.L.avail);
       if (!(S.sel && S.sel.kind === 'junction' && S.sel.a === h.L.j.a.id)) select({ kind: 'junction', a: h.L.j.a.id, b: h.L.j.b.id });
     }
     else if (h.type === 'junction') {
@@ -4748,7 +4804,7 @@ function loadSettings() {
   if (typeof o.repAmt === 'number') S.repAmt = clamp(o.repAmt, 0.1, 1);
   if ([3, 5, 7, 9].includes(o.repSens)) S.repSens = o.repSens;
   if ([0, 12, 24].includes(o.repBright)) S.repBright = o.repBright;
-  if (o.tail && typeof o.tail.len === 'number' && typeof o.tail.gain === 'number') S.tailDef = { len: clamp(o.tail.len, TAIL_MIN, TAIL_MAX), gain: o.tail.gain, lp: +o.tail.lp || 0 };
+  if (o.tail && typeof o.tail.len === 'number' && typeof o.tail.gain === 'number') S.tailDef = { len: clamp(o.tail.len, TAIL_MIN, o.tail.mode === 'natural' ? TAIL_MAX_NAT : TAIL_MAX), gain: o.tail.gain, lp: +o.tail.lp || 0, mode: o.tail.mode === 'natural' ? 'natural' : 'blend' };
 }
 function applySettingsUI() {
   setTool(S.tool, true);

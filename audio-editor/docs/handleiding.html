@@ -271,7 +271,7 @@
 <div class="when">In een kerk hoor je na elke noot nog seconden galm. Wissel je naar een take die pas op dat punt begint (een herneming), of waar het vorige akkoord anders klonk, dan valt die galm bij de knip weg. Met een galmstaart klinkt de vorige take zacht door en sterft uit onder de nieuwe.</div>
 <ol>
   <li>Klik op de crossfade (⋈) van de wissel.</li>
-  <li>Zet <span class="btn">Galmstaart</span> aan, of druk <kbd>G</kbd>. Onderin de EDIT-baan verschijnt een lichte strook: dat is de vorige take die doorklinkt.</li>
+  <li>Zet <span class="btn">Galmstaart</span> aan, of druk <kbd>G</kbd>, en kies bij <i>Verloop</i>: <b>Wegmengen onder de nieuwe take</b>. Onderin de EDIT-baan verschijnt een lichte strook: dat is de vorige take die doorklinkt.</li>
   <li>Luister met <kbd>A</kbd>. Het stuk loopt door tot de galm is uitgeklonken.</li>
   <li>Stel bij:
     <ul>
@@ -290,6 +290,19 @@
 </div>
 
 <div class="scen">
+<h3>K2 · Een nieuw deel na een fermate: de originele galm laten uitklinken</h3>
+<div class="when">Bij een variatiereeks, een nieuw deel, of een passage met een fermate waarna iets nieuws begint: de eerste take klinkt door tot zijn galm weg is, en daaronder komt de nieuwe take op met een fade-in. Je hoort de echte galm van de opname; er wordt niets nagebootst of gefilterd.</div>
+<ol>
+  <li>Zet <b>Doel in</b> (<kbd>D</kbd>) op het moment waarop het nieuwe deel moet beginnen, dus na de fermate. Tot daar klinkt de eerste take zoals hij is opgenomen.</li>
+  <li>Klik de take met het nieuwe deel, zet <b>Bron in</b> (<kbd>B</kbd>) op de inzet (of net ervoor, met de adem) en druk <kbd>⌥</kbd><kbd>E</kbd>. Gebruik hier geen <kbd>H</kbd>: dat zoekt dezelfde passage, niet het volgende deel.</li>
+  <li>Klik op de crossfade, druk <kbd>G</kbd> en kies bij <i>Verloop</i>: <b>Natuurlijk uitklinken (origineel)</b>. De editor meet waar de galm in de opname tot op de ruis van de zaal is gezakt en zet de lengte daarop (tot 30 s). De eerste take klinkt tot daar door op vol volume; alleen de laatste halve seconde fadet uit.</li>
+  <li>De <b>lengte van de crossfade</b> is nu de fade-in van de nieuwe take. 200–500 ms is een goed begin; korter als de nieuwe take met stilte of een adem begint.</li>
+  <li>Luister met <kbd>A</kbd>. <span class="btn">Tot de galm weg is</span> meet de lengte opnieuw, bijvoorbeeld nadat je het knippunt hebt verschoven.</li>
+</ol>
+<p>De galm kan niet langer doorklinken dan de opname: houdt de take kort na de fermate op, dan meldt de editor dat. De stand wordt onthouden voor je volgende galmstaart.</p>
+</div>
+
+<div class="scen">
 <h3>L · Donor-galm: galm van een plek waar het koor stopt</h3>
 <div class="when">Zingt de vorige take na de knip meteen verder, dan hoor je met een gewone galmstaart dubbele stemmen. Gebruik dan de galm van een plek waar het koor écht stopt: een rust, een fermate of het slotakkoord, liefst op hetzelfde akkoord.</div>
 <ol>
@@ -299,7 +312,7 @@
   <li>Luister met <kbd>A</kbd> en stel lengte, volume en eventueel <i>Doffer</i> bij.</li>
 </ol>
 <p>De donor-galm begint aan het begin van de crossfade en komt op terwijl de vorige take uitfadet. <span class="btn">Terug naar galm van take A</span> schakelt terug naar de gewone galmstaart.</p>
-<div class="box tip"><b class="t">Welke van de twee?</b>Stopt of ademt het koor kort na de knip, of is het stuk rustig: de gewone galmstaart (K), eventueel met <i>Doffer</i>. Zingt het koor direct door met andere noten of tekst: een donor-galm (L).</div>
+<div class="box tip"><b class="t">Welke?</b>Een nieuw deel na een fermate of rust: <i>Natuurlijk uitklinken</i> (K2). Een wissel midden in een frase, waar de galm niet mag opvallen: <i>Wegmengen</i> (K), eventueel met <i>Doffer</i>. Zingt de vorige take direct door met andere noten of tekst: een donor-galm (L).</div>
 </div>
 
 <div class="scen">
@@ -466,6 +479,7 @@
   <tr><td class="k">Volumesprong</td><td><span class="btn">Volume gelijk maken</span> bij de crossfade.</td></tr>
   <tr><td class="k">Galm valt weg bij een wissel</td><td>Klik op de crossfade en zet <span class="btn">Galmstaart</span> aan (<kbd>G</kbd>). Zie werkwijze K.</td></tr>
   <tr><td class="k">Dubbele stemmen in de galmstaart</td><td>De vorige take zingt door. Zet het volume lager, de lengte korter of <i>Doffer</i> aan, of kies een donor-galm (werkwijze L).</td></tr>
+  <tr><td class="k">Na een fermate klinkt de galm kunstmatig</td><td>Kies bij de crossfade <i>Verloop: Natuurlijk uitklinken</i>. Dan hoor je de opname zelf, onbewerkt (werkwijze K2).</td></tr>
   <tr><td class="k">Galmstaart is korter dan ingesteld</td><td>De take houdt daar op. De staart kan niet langer zijn dan het materiaal na de knip; kies anders een donor-galm.</td></tr>
   <tr><td class="k">Reparatie klinkt hol of waterig</td><td>Verlaag de sterkte in de lijst, maak het gebied smaller of minder hoog, of vervang het stuk door een andere take. Vergelijk met <kbd>X</kbd>.</td></tr>
   <tr><td class="k">Bijgeluid in zachte passage niet te zien</td><td>Zet <i>Helderheid</i> in het reparatievenster hoger en zoom in.</td></tr>
