@@ -53,7 +53,7 @@
 <body>
 
 <h1>Take Crossfader</h1>
-<div class="sub">Handleiding · montage van takes met crossfades · versie november 2026</div>
+<div class="sub">Handleiding · montage van takes met crossfades · versie 17 november 2026</div>
 
 <p class="lead">Take Crossfader is een audio-editor om uit meerdere opnames (<i>takes</i>) van hetzelfde stuk één eindversie samen te stellen, met nauwkeurige crossfades op de overgangen. Hij werkt volgens het principe van professionele montagesystemen zoals Sequoia, Pyramix en SADiE: de takes zijn de bronnen, de edit is het doel. Ook takes in vrij tempo kun je noot voor noot op elkaar laten aansluiten.</p>
 
@@ -79,7 +79,7 @@
 <p>Gebruik op de Mac bij voorkeur <b>Google Chrome</b>. De editor is in Chrome (Chromium) getest, en Chrome bewaart de projecten op je Mac betrouwbaar. Safari werkt in principe ook, maar is niet getest.</p>
 <h3>Als app installeren</h3>
 <ul>
-  <li><b>Chrome:</b> open de editor en klik op <span class="btn">Installeer app</span> in de werkbalk, of op het installatie-icoon rechts in de adresbalk. De app komt in de map Apps en in Launchpad, en opent in een eigen venster.</li>
+  <li><b>Chrome:</b> open de editor en klik op <span class="btn">Installeer app</span> rechtsboven, of op het installatie-icoon rechts in de adresbalk. De app komt in de map Apps en in Launchpad, en opent in een eigen venster.</li>
   <li><b>Safari (macOS 14 of nieuwer):</b> menu <i>Archief → Voeg toe aan Dock…</i></li>
 </ul>
 <p>Open de app één keer met internet. Daarna werkt hij ook zonder internet, inclusief MP3-export (nadat je één keer met internet een MP3 hebt gemaakt).</p>
@@ -101,15 +101,16 @@
 <h2>2. Het scherm</h2>
 <figure>
   <img src="img-overzicht.png" alt="Hoofdscherm">
-  <figcaption>De EDIT bestaat hier uit take 1, dan take 2 (vanaf 0:05) en daarna take 3 (vanaf 0:15). De vlinder-iconen ⋈ zijn de crossfades. Geel: een stuk dat vervangen gaat worden (D in – D uit). Groen in de tijdbalk: een marker met notitie. Rood: de afspeelkop. In de take-banen is het lichtere deel het stuk dat in de edit gebruikt wordt.</figcaption>
+  <figcaption>De EDIT bestaat hier uit take 1, dan take 2 (vanaf 0:05) en daarna take 3 (vanaf 0:15). De vlinder-iconen ⋈ zijn de crossfades. Goud: een stuk dat vervangen gaat worden (D in – D uit). Groen in de tijdbalk: een marker met notitie. Rood: de afspeelkop. In de take-banen is het lichtere deel het stuk dat in de edit gebruikt wordt.</figcaption>
 </figure>
 <table>
   <thead><tr><th>Onderdeel</th><th>Wat het doet</th></tr></thead>
   <tr><td class="k">Tijdbalk (bovenaan)</td><td>Klik = afspeelkop zetten. Slepen = een stuk van de edit selecteren (om te vervangen, weg te halen, te herhalen of te exporteren). Markers verschijnen hier.</td></tr>
-  <tr><td class="k">EDIT-baan</td><td>Je eindversie. Clips, crossfades (⋈), fades, en de gele doelpunten.</td></tr>
+  <tr><td class="k">EDIT-baan</td><td>Je eindversie. Clips, crossfades (⋈), fades, en de gouden doelpunten.</td></tr>
   <tr><td class="k">Take-banen</td><td>De originele opnames. Klik op de naam om een take te kiezen; <span class="btn">▶ solo</span> speelt die take alleen.</td></tr>
   <tr><td class="k">Paneel onderaan</td><td>Verandert met wat je selecteert: clip, crossfade, take, selectie, marker, uitlijnvenster, reparatievenster, exporteren of projecten. Met niets geselecteerd staat hier een korte uitleg.</td></tr>
-  <tr><td class="k">Werkbalk</td><td>Projecten, importeren, afspelen, <i>Terug naar start</i>, knippen, Doel/Bron-punten, <i>Takes hier uitlijnen</i>, <i>Overnemen</i>, markers, uitlijnvenster, <i>Repareer</i> (bijgeluiden), ongedaan maken, zoom, Snap, Nuldoorgang, standaard-crossfade en exporteren.</td></tr>
+  <tr><td class="k">Bovenbalk</td><td>Linksboven de projectnaam (klik erop voor je projecten) en of alles bewaard is. Rechts: zoom, het tandwiel met instellingen, <span class="btn">Demo</span>, <span class="btn">Projecten</span>, <span class="btn">Handleiding</span>, <span class="btn">Sneltoetsen</span>, <span class="btn">Importeer takes</span> en <span class="btn">Exporteer…</span>.</td></tr>
+  <tr><td class="k">Werkbalk</td><td>Van links naar rechts: gereedschap, ongedaan maken en opnieuw, afspelen met de klok, de montage in de volgorde waarin je werkt (<i>Doel</i> › <i>Takes hier uitlijnen</i> › <i>Bron</i> › <i>Overnemen</i>, het goud omlijnde blok), en <span class="btn">Knip</span>, <span class="btn">Marker</span>, <span class="btn">Verwijder</span>, <span class="btn">Uitlijnen</span> en <span class="btn">Repareer</span>.</td></tr>
 </table>
 <div style="break-inside: avoid">
 <h3>Gereedschap</h3>
@@ -122,19 +123,21 @@
 </table>
 <p>Werk je vooral met <kbd>D</kbd>, <kbd>H</kbd> en <kbd>E</kbd>, kies dan <b>↖ Selecteren</b> of <b>✋ Hand</b>. Dan kun je geen clip per ongeluk verslepen.</p>
 </div>
-<h3>Instellingen in de werkbalk</h3>
+<h3>Instellingen (tandwiel)</h3>
+<p>Het tandwiel ⚙ rechtsboven opent de instellingen. Ze worden per computer onthouden.</p>
 <ul>
   <li><b>↩ Terug naar start</b>: na stoppen springt de afspeelkop terug naar waar je begon.</li>
   <li><b>Snap</b>: bij slepen klikt een clip vast aan randen en de afspeelkop. Houd <kbd>⇧</kbd> ingedrukt tijdens het slepen om dat tijdelijk uit te zetten.</li>
   <li><b>Nuldoorgang</b>: knippen en weghalen schuiven het knippunt maximaal 5 ms op naar een punt waar de golf door nul gaat. Dat voorkomt tikjes.</li>
-  <li><b>Std. crossfade</b>: de lengte van nieuwe crossfades. 30–60 ms voor de meeste wissels; 10–30 ms als je één noot vervangt.</li>
+  <li><b>Standaard-crossfade</b>: de lengte van nieuwe crossfades. 30–60 ms voor de meeste wissels; 10–30 ms als je één noot vervangt.</li>
 </ul>
 
 <h2>3. Werkwijzen per situatie</h2>
-<p>De punten <b>D</b> (doel, in de edit) en <b>B</b> (bron, in een take) kun je zetten <b>tijdens het afspelen</b>, op het moment dat je de noot hoort. Gele lijnen laten zien waar ze staan. <kbd>Esc</kbd> wist ze.</p>
+<p>De punten <b>D</b> (doel, in de edit) en <b>B</b> (bron, in een take) kun je zetten <b>tijdens het afspelen</b>, op het moment dat je de noot hoort. Gouden lijnen laten zien waar ze staan. <kbd>Esc</kbd> wist ze.</p>
 
 <div class="scen">
 <h3>A · Beginnen: takes importeren</h3>
+<p>Zolang er nog niets geladen is, zie je het startscherm met <span class="btn">Importeer takes</span>, <span class="btn">Open een project</span> en <span class="btn">Probeer de demo</span>, en daaronder je laatste projecten.</p>
 <ol>
   <li>Klik op <span class="btn">Importeer takes</span>, of sleep audiobestanden (wav, aiff, flac, mp3, m4a) in het venster.</li>
   <li>De eerste take komt automatisch in de edit. Kies eventueel eerst bij <span class="btn">Projecten</span> een <b>Nieuw project</b>.</li>
@@ -158,13 +161,13 @@
 <div class="scen">
 <h3>C · Eén noot of een kort stuk vervangen</h3>
 <ol>
-  <li><b>Sleep in de tijdbalk</b> over de noot die weg moet (geel: D in – D uit). Of druk tijdens het afspelen <kbd>D</kbd> aan het begin en <kbd>⇧</kbd><kbd>D</kbd> aan het eind.</li>
+  <li><b>Sleep in de tijdbalk</b> over de noot die weg moet (goud: D in – D uit). Of druk tijdens het afspelen <kbd>D</kbd> aan het begin en <kbd>⇧</kbd><kbd>D</kbd> aan het eind.</li>
   <li>Klik op de <b>naam van de take</b> met de betere noot.</li>
   <li>Druk <kbd>E</kbd>. De editor zoekt in die take zelf het begin én het eind van dezelfde noot, en zet hem ertussen met een crossfade aan beide kanten.</li>
   <li>Controleer met <kbd>L</kbd>. De afspeelkop staat al een stukje vóór de wissel.</li>
 </ol>
 <p>Is de nieuwe noot iets langer of korter, dan schuift de rest van de edit precies dat verschil op. Latere wissels en markers blijven intact.</p>
-<div class="box tip"><b class="t">Tip voor korte vervangingen</b>Zet <i>Std. crossfade</i> eerst op 10–30 ms. Een crossfade van 40 ms of meer kan bij een korte noot de inzet hoorbaar uitsmeren.</div>
+<div class="box tip"><b class="t">Tip voor korte vervangingen</b>Zet de <i>Standaard-crossfade</i> (tandwiel) eerst op 10–30 ms. Een crossfade van 40 ms of meer kan bij een korte noot de inzet hoorbaar uitsmeren.</div>
 </div>
 
 <div class="scen">
@@ -268,7 +271,7 @@
 <div class="when">In een kerk hoor je na elke noot nog seconden galm. Wissel je naar een take die pas op dat punt begint (een herneming), of waar het vorige akkoord anders klonk, dan valt die galm bij de knip weg. Met een galmstaart klinkt de vorige take zacht door en sterft uit onder de nieuwe.</div>
 <ol>
   <li>Klik op de crossfade (⋈) van de wissel.</li>
-  <li>Zet <span class="btn">Galmstaart</span> aan, of druk <kbd>G</kbd>. Onderin de EDIT-baan verschijnt een lichte strook: dat is de vorige take die doorklinkt.</li>
+  <li>Zet <span class="btn">Galmstaart</span> aan, of druk <kbd>G</kbd>, en kies bij <i>Verloop</i>: <b>Wegmengen onder de nieuwe take</b>. Onderin de EDIT-baan verschijnt een lichte strook: dat is de vorige take die doorklinkt.</li>
   <li>Luister met <kbd>A</kbd>. Het stuk loopt door tot de galm is uitgeklonken.</li>
   <li>Stel bij:
     <ul>
@@ -287,6 +290,19 @@
 </div>
 
 <div class="scen">
+<h3>K2 · Een nieuw deel na een fermate: de originele galm laten uitklinken</h3>
+<div class="when">Bij een variatiereeks, een nieuw deel, of een passage met een fermate waarna iets nieuws begint: de eerste take klinkt door tot zijn galm weg is, en daaronder komt de nieuwe take op met een fade-in. Je hoort de echte galm van de opname; er wordt niets nagebootst of gefilterd.</div>
+<ol>
+  <li>Zet <b>Doel in</b> (<kbd>D</kbd>) op het moment waarop het nieuwe deel moet beginnen, dus na de fermate. Tot daar klinkt de eerste take zoals hij is opgenomen.</li>
+  <li>Klik de take met het nieuwe deel, zet <b>Bron in</b> (<kbd>B</kbd>) op de inzet (of net ervoor, met de adem) en druk <kbd>⌥</kbd><kbd>E</kbd>. Gebruik hier geen <kbd>H</kbd>: dat zoekt dezelfde passage, niet het volgende deel.</li>
+  <li>Klik op de crossfade, druk <kbd>G</kbd> en kies bij <i>Verloop</i>: <b>Natuurlijk uitklinken (origineel)</b>. De editor meet waar de galm in de opname tot op de ruis van de zaal is gezakt en zet de lengte daarop (tot 30 s). De eerste take klinkt tot daar door op vol volume; alleen de laatste halve seconde fadet uit.</li>
+  <li>De <b>lengte van de crossfade</b> is nu de fade-in van de nieuwe take. 200–500 ms is een goed begin; korter als de nieuwe take met stilte of een adem begint.</li>
+  <li>Luister met <kbd>A</kbd>. <span class="btn">Tot de galm weg is</span> meet de lengte opnieuw, bijvoorbeeld nadat je het knippunt hebt verschoven.</li>
+</ol>
+<p>De galm kan niet langer doorklinken dan de opname: houdt de take kort na de fermate op, dan meldt de editor dat. De stand wordt onthouden voor je volgende galmstaart.</p>
+</div>
+
+<div class="scen">
 <h3>L · Donor-galm: galm van een plek waar het koor stopt</h3>
 <div class="when">Zingt de vorige take na de knip meteen verder, dan hoor je met een gewone galmstaart dubbele stemmen. Gebruik dan de galm van een plek waar het koor écht stopt: een rust, een fermate of het slotakkoord, liefst op hetzelfde akkoord.</div>
 <ol>
@@ -296,7 +312,7 @@
   <li>Luister met <kbd>A</kbd> en stel lengte, volume en eventueel <i>Doffer</i> bij.</li>
 </ol>
 <p>De donor-galm begint aan het begin van de crossfade en komt op terwijl de vorige take uitfadet. <span class="btn">Terug naar galm van take A</span> schakelt terug naar de gewone galmstaart.</p>
-<div class="box tip"><b class="t">Welke van de twee?</b>Stopt of ademt het koor kort na de knip, of is het stuk rustig: de gewone galmstaart (K), eventueel met <i>Doffer</i>. Zingt het koor direct door met andere noten of tekst: een donor-galm (L).</div>
+<div class="box tip"><b class="t">Welke?</b>Een nieuw deel na een fermate of rust: <i>Natuurlijk uitklinken</i> (K2). Een wissel midden in een frase, waar de galm niet mag opvallen: <i>Wegmengen</i> (K), eventueel met <i>Doffer</i>. Zingt de vorige take direct door met andere noten of tekst: een donor-galm (L).</div>
 </div>
 
 <div class="scen">
@@ -336,7 +352,7 @@
 <p>Klik op een crossfade (het vlinder-icoon ⋈ onderaan in de EDIT-baan). Onderaan verschijnt de crossfade-editor met de uitgaande take (A), de nieuwe take (B) en het resultaat.</p>
 <figure>
   <img src="img-crossfade.png" alt="Crossfade-editor">
-  <figcaption>Crossfade-editor: de witte lijnen zijn de fade-curves, de gele lijn is het knippunt, en de lichte vlakken zijn het deel dat klinkt.</figcaption>
+  <figcaption>Crossfade-editor: de witte lijnen zijn de fade-curves, de gouden lijn is het knippunt, en de lichte vlakken zijn het deel dat klinkt.</figcaption>
 </figure>
 <table>
   <thead><tr><th>Wat</th><th>Hoe</th></tr></thead>
@@ -366,7 +382,7 @@
 </ul>
 
 <h2>6. Toetscombinaties</h2>
-<p class="small">⌘ = Command, ⌥ = Option (Alt), ⇧ = Shift. Sneltoetsen werken niet terwijl de cursor in een tekstveld staat; klik dan eerst in de tijdlijn. ⌘Z werkt overal.</p>
+<p class="small">In de editor zelf zie je dit overzicht met <kbd>?</kbd> (of <span class="btn">Sneltoetsen</span> rechtsboven). ⌘ = Command, ⌥ = Option (Alt), ⇧ = Shift. Sneltoetsen werken niet terwijl de cursor in een tekstveld staat; klik dan eerst in de tijdlijn. ⌘Z werkt overal.</p>
 <table>
   <thead><tr><th>Toets</th><th>Functie</th></tr></thead>
   <tr class="group"><td colspan="2">Afspelen en navigeren</td></tr>
@@ -406,7 +422,7 @@
 
   <tr class="group"><td colspan="2">Bijgeluiden repareren</td></tr>
   <tr><td class="k"><kbd>R</kbd></td><td>Reparatievenster openen voor de geselecteerde clip, take of selectie</td></tr>
-  <tr><td class="k"><kbd>Spatie</kbd></td><td>In het reparatievenster: de take beluisteren rond het gebied of de gekozen reparatie (anders vanaf de gele cursor)</td></tr>
+  <tr><td class="k"><kbd>Spatie</kbd></td><td>In het reparatievenster: de take beluisteren rond het gebied of de gekozen reparatie (anders vanaf de gouden cursor)</td></tr>
   <tr><td class="k"><kbd>X</kbd></td><td>A/B: alle reparaties tijdelijk uit (je hoort het origineel) en weer aan</td></tr>
   <tr><td class="k"><kbd>Delete</kbd></td><td>De gekozen reparatie verwijderen</td></tr>
   <tr><td class="k"><kbd>Esc</kbd></td><td>Reparatievenster sluiten</td></tr>
@@ -463,6 +479,7 @@
   <tr><td class="k">Volumesprong</td><td><span class="btn">Volume gelijk maken</span> bij de crossfade.</td></tr>
   <tr><td class="k">Galm valt weg bij een wissel</td><td>Klik op de crossfade en zet <span class="btn">Galmstaart</span> aan (<kbd>G</kbd>). Zie werkwijze K.</td></tr>
   <tr><td class="k">Dubbele stemmen in de galmstaart</td><td>De vorige take zingt door. Zet het volume lager, de lengte korter of <i>Doffer</i> aan, of kies een donor-galm (werkwijze L).</td></tr>
+  <tr><td class="k">Na een fermate klinkt de galm kunstmatig</td><td>Kies bij de crossfade <i>Verloop: Natuurlijk uitklinken</i>. Dan hoor je de opname zelf, onbewerkt (werkwijze K2).</td></tr>
   <tr><td class="k">Galmstaart is korter dan ingesteld</td><td>De take houdt daar op. De staart kan niet langer zijn dan het materiaal na de knip; kies anders een donor-galm.</td></tr>
   <tr><td class="k">Reparatie klinkt hol of waterig</td><td>Verlaag de sterkte in de lijst, maak het gebied smaller of minder hoog, of vervang het stuk door een andere take. Vergelijk met <kbd>X</kbd>.</td></tr>
   <tr><td class="k">Bijgeluid in zachte passage niet te zien</td><td>Zet <i>Helderheid</i> in het reparatievenster hoger en zoom in.</td></tr>
