@@ -222,13 +222,14 @@ kbd {
             start  = positie op de tijdlijn (s)
             offset = positie in de bron (s)
             xShape = vorm van de crossfade met de vorige clip
+            tail   = optionele galmstaart na het eind van de clip: { len, gain, lp, donor }
    Twee opeenvolgende clips die overlappen vormen samen een crossfade
    over het overlapgebied. Afspelen en exporteren gebruiken dezelfde
    gain-envelope (envAt), zodat je hoort wat je exporteert.
    ===================================================================== */
 
 const $ = (id) => document.getElementById(id);
-const RULER = 26, EDIT_H = 150, TAKE_H = 76;
+const RULER = 26, EDIT_H = 150, TAKE_H = 76, TAIL_H = 30;
 const COLORS = ['#4f9dff', '#ff9f43', '#2ed573', '#e056fd', '#ffd32a', '#ff6b81', '#1dd1a1', '#a29bfe'];
 const PEAK_BLOCK = 256;
 const MIN_DUR = 0.005;
@@ -251,6 +252,7 @@ const S = {
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
   meter: 0,
+  tailDef: { len: 2.5, gain: -6, lp: 0 }, pick: null,
 };
 
 /* ---------- helpers ---------- */
@@ -435,6 +437,7 @@ function normalize() {
   quantize();
   S.clips = S.clips.filter((c) => c.dur > MIN_DUR / 2 && takeOf(c.takeId));
   S.clips.sort((a, b) => a.start - b.start || a.id - b.id);
+  for (const c of S.clips) if (!c.tail) delete c.tail;
 }
 
 function envelopes() {
@@ -473,6 +476,75 @@ function junctions() {
   return out;
 }
 function junctionOf(aId, bId) { return junctions().find((j) => j.a.id === aId && j.b.id === bId) || null; }
+
+/* ---------- galmstaart ----------
+   Na een wissel valt de galm van de vorige take weg. Met een galmstaart (clip.tail op de uitgaande clip A)
+   klinkt A na de overgang zacht door en sterft langzaam uit onder de nieuwe take:
+     tail = { len, gain, lp, donor }
+       len   = lengte van het uitklinken na het eind van A (s)
+       gain  = volume van de staart (dB, t.o.v. de clip)
+       lp    = laagdoorlaatfilter in Hz (0 = uit): minder directe klank, vooral galm
+       donor = { takeId, offset }: in plaats van A zelf een stuk galm uit een take waar het koor echt stopt
+   Tijdens de crossfade zakt A naar het staartvolume (de staart komt op terwijl A uitfadet); daarna sterft hij uit.
+   De staart is een eigen laag in afspelen, voorvertoning en export; clips en bronnen veranderen niet. */
+const TAIL_MIN = 0.5, TAIL_MAX = 8;
+function tailLayers(env = envelopes()) {
+  const out = [];
+  for (const j of junctions()) {
+    const a = j.a, tl = a.tail;
+    if (!tl) continue;
+    const e = env[S.clips.indexOf(a)], E = end(a), L0 = E - e.fout;
+    const dn = tl.donor && takeOf(tl.donor.takeId) ? tl.donor : null;
+    const take = dn ? takeOf(dn.takeId) : takeOf(a.takeId);
+    const src0 = dn ? dn.offset : a.offset + (L0 - a.start);
+    const avail = Math.max(0, take.buffer.duration - src0 - (E - L0));     // bronmateriaal na het eind van A
+    const len = Math.min(tl.len, avail);
+    out.push({ j, a, tl, take, donor: !!dn, L0, E, L1: E + len, src0, avail, fout: e.fout, shape: e.foutShape,
+      g: dbLin((dn ? 0 : a.gain || 0) + (tl.gain || 0)), lp: tl.lp || 0, dead: len < 0.02 });
+  }
+  return out;
+}
+const tailOf = (j, env) => tailLayers(env).find((L) => L.a === j.a) || null;
+/** Gain van de galmstaart op tijdlijn-tijd t: opkomen tijdens de fade-out van A, daarna uitsterven. */
+function tailEnvAt(L, t) {
+  if (L.dead || t < L.L0 || t >= L.L1) return 0;
+  if (t < L.E) return L.g * (1 - SHAPES[L.shape].f((L.E - t) / L.fout));
+  const v = (t - L.E) / (L.L1 - L.E);
+  // eigen take: eerst snel zakken, dan lang zacht na (de take zingt door); donor: de galm sterft zelf al uit
+  return L.g * (L.donor ? 0.5 + 0.5 * Math.cos(Math.PI * v) : (1 - v) * (1 - v));
+}
+/** Eind van wat er klinkt: de edit plus een eventuele galmstaart die voorbij de laatste clip doorloopt. */
+function mixEnd() { return tailLayers().reduce((m, L) => (L.dead ? m : Math.max(m, L.L1)), editEnd()); }
+/** Tweede-orde laagdoorlaatfilter (Butterworth), gelijk aan het filter dat bij afspelen en export wordt gebruikt. */
+function biquadLP(fc, sr) {
+  const w = 2 * Math.PI * Math.min(fc, sr * 0.45) / sr, cs = Math.cos(w), al = Math.sin(w) / (2 * Math.SQRT1_2);
+  const a0 = 1 + al, b0 = (1 - cs) / 2 / a0, b1 = (1 - cs) / a0, a1 = -2 * cs / a0, a2 = (1 - al) / a0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  return (x) => { const y = b0 * x + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x; y2 = y1; y1 = y; return y; };
+}
+function toggleTail(j) {
+  mutate(() => { if (j.a.tail) delete j.a.tail; else j.a.tail = { ...S.tailDef }; });
+  const L = j.a.tail && tailOf(j);
+  toast(!j.a.tail ? 'Galmstaart uit'
+    : L && L.dead ? 'Galmstaart aan, maar de take houdt hier op: er is geen galm om te laten doorklinken. Kies een donor-galm.'
+    : `Galmstaart aan: "${takeOf(j.a.takeId).name}" klinkt ${L.L1 - L.E < j.a.tail.len - 0.05 ? (L.L1 - L.E).toFixed(1) + ' s (tot het eind van de take)' : j.a.tail.len.toFixed(1) + ' s'} door onder de nieuwe take`);
+}
+function rememberTail(tl) { S.tailDef = { len: tl.len, gain: tl.gain, lp: tl.lp || 0 }; saveSettings(); }
+/** Donor-galm: het in een take geselecteerde stuk (waar het koor stopt) komt onder de overgang te liggen. */
+function applyDonor() {
+  const pk = S.pick, r = S.range;
+  S.pick = null;
+  if (!pk || !r) return;
+  const a = clipOf(pk.a), tk = takeOf(r.takeId);
+  if (!a || !tk || !junctionOf(pk.a, pk.b)) return;
+  const t0 = Math.min(r.t0, r.t1), t1 = Math.max(r.t0, r.t1);
+  mutate(() => {
+    a.tail = { ...(a.tail || S.tailDef), gain: a.tail && a.tail.donor ? a.tail.gain : 0, len: clamp(t1 - t0, TAIL_MIN, TAIL_MAX), donor: { takeId: tk.id, offset: Math.max(0, t0 - tk.sync) } };
+    S.range = null;
+    S.sel = { kind: 'junction', a: pk.a, b: pk.b };
+  });
+  toast(`Donor-galm uit "${tk.name}" (${fmt(t0 - tk.sync, 1)} in de take, ${clamp(t1 - t0, TAIL_MIN, TAIL_MAX).toFixed(1)} s) ligt nu onder de overgang. Beluister met A.`);
+}
 
 /**
  * Zet de crossfade-lengte rond het midden van de huidige overgang: symmetrisch als dat kan,
@@ -541,7 +613,7 @@ function replaceRange(take, t0, t1) {
     for (const c of S.clips) {
       const ce = end(c);
       if (ce <= t0 || c.start >= t1) { out.push(c); continue; }
-      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.005 });
+      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.005, tail: null });
       if (ce > t1) {
         const k = t1 - c.start;
         out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t1, offset: c.offset + k, dur: ce - t1, fadeIn: 0.005, xShape: 'eqp' });
@@ -586,7 +658,7 @@ function splitAt(t) {
   mutate(() => {
     const k = t - c.start;
     const n = { ...c, id: newId(), start: t, offset: c.offset + k, dur: c.dur - k, fadeIn: 0.005, xShape: 'eqp' };
-    c.dur = k; c.fadeOut = 0.005;
+    c.dur = k; c.fadeOut = 0.005; c.tail = null;
     S.clips.push(n);
     S.sel = { kind: 'clip', id: n.id };
   });
@@ -605,7 +677,7 @@ function resolveDrop(m, insert) {
     if (insert) {
       if (c.start < s - 1e-9 && ce > s + 1e-9) {
         const k = s - c.start;
-        out.push({ ...c, dur: k, fadeOut: 0.005 });
+        out.push({ ...c, dur: k, fadeOut: 0.005, tail: null });
         out.push({ ...c, id: newId(), start: e, offset: c.offset + k, dur: c.dur - k, fadeIn: 0.005, xShape: 'eqp' });
       } else if (c.start >= s - 1e-9) out.push({ ...c, start: c.start + m.dur });
       else out.push(c);
@@ -614,13 +686,13 @@ function resolveDrop(m, insert) {
     if (ce <= s + 1e-9 || c.start >= e - 1e-9) { out.push(c); continue; }   // geen overlap
     if (c.start >= s - 1e-9 && ce <= e + 1e-9) continue;                     // helemaal bedekt: weg
     if (c.start < s && ce > e) {                                             // m ligt erin: splitsen
-      out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });
+      out.push({ ...c, dur: s - c.start, fadeOut: 0.005, tail: null });
       out.push({ ...c, id: newId(), start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
       continue;
     }
     const ov = c.start < s ? ce - s : e - c.start;
     if (ov < Math.min(c.dur, m.dur) / 2) { out.push(c); continue; }          // bewuste crossfade
-    if (c.start < s) out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });   // links: inkorten
+    if (c.start < s) out.push({ ...c, dur: s - c.start, fadeOut: 0.005, tail: null });   // links: inkorten
     else out.push({ ...c, start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
   }
   S.clips = out;
@@ -655,7 +727,7 @@ function deleteRange(t0, t1, ripple = true) {
       const ce = end(c);
       if (ce <= t0 + 1e-9) { out.push(c); continue; }
       if (c.start >= t1 - 1e-9) { out.push({ ...c, start: c.start - d }); continue; }
-      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.01 });
+      if (c.start < t0) out.push({ ...c, dur: t0 - c.start, fadeOut: 0.01, tail: null });
       if (ce > t1) out.push({ ...c, id: c.start < t0 ? newId() : c.id, start: t1 - d, offset: c.offset + (t1 - c.start), dur: ce - t1, fadeIn: 0.01, xShape: 'eqp' });
     }
     S.clips = out; normalize();
@@ -747,14 +819,14 @@ function resolveGroupDrop(ids) {
     if (ce <= s + 1e-9 || c.start >= e - 1e-9) { out.push(c); continue; }
     if (c.start >= s - 1e-9 && ce <= e + 1e-9) continue;
     if (c.start < s && ce > e) {
-      out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });
+      out.push({ ...c, dur: s - c.start, fadeOut: 0.005, tail: null });
       out.push({ ...c, id: newId(), start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
       continue;
     }
     const first = c.start < s ? group.reduce((a, b) => (a.start <= b.start ? a : b)) : group.reduce((a, b) => (end(a) >= end(b) ? a : b));
     const ov = c.start < s ? ce - s : e - c.start;
     if (ov < Math.min(c.dur, first.dur) / 2) { out.push(c); continue; }
-    if (c.start < s) out.push({ ...c, dur: s - c.start, fadeOut: 0.005 });
+    if (c.start < s) out.push({ ...c, dur: s - c.start, fadeOut: 0.005, tail: null });
     else out.push({ ...c, start: e, offset: c.offset + (e - c.start), dur: ce - e, fadeIn: 0.005, xShape: 'eqp' });
   }
   S.clips = out;
@@ -850,7 +922,9 @@ function validateSel() {
 }
 
 function afterEdit() {
-  normalize(); validateSel();
+  normalize();
+  { const ja = new Set(junctions().map((j) => j.a)); for (const c of S.clips) if (c.tail && !ja.has(c)) delete c.tail; }   // galmstaart hoort bij een overgang
+  validateSel();
   // Een 'bewerking' die niets veranderde (bijv. een clip terug op zijn plek) telt niet mee
   // en mag de opnieuw-lijst niet wissen.
   if (S.undoCheck) {
@@ -869,12 +943,12 @@ function afterEdit() {
 
 /* ---------- playback ---------- */
 /** Plant alle clips in [from,to) in op context 'ac' vanaf contexttijd 'when'. */
-function scheduleGraph(ac, dest, from, to, when) {
+function scheduleGraph(ac, dest, from, to, when, opts = {}) {
   const env = envelopes();
   const srcs = [];
   S.clips.forEach((c, i) => {
     const cs = c.start, ce = end(c);
-    if (ce <= from || cs >= to) return;
+    if (opts.tailOnly || ce <= from || cs >= to) return;
     const take = takeOf(c.takeId), e = env[i];
     const p0 = Math.max(cs, from), p1 = Math.min(ce, to);
     if (p1 - p0 < 1e-4) return;
@@ -906,6 +980,36 @@ function scheduleGraph(ac, dest, from, to, when) {
       srcs.push(src);
     }
   });
+  // galmstaarten: een eigen laag per overgang
+  for (const L of tailLayers(env)) {
+    if (L.dead || (opts.tailOnly && opts.tailOnly !== L.a.id)) continue;
+    const p0 = Math.max(L.L0, from), p1 = Math.min(L.L1, to);
+    if (p1 - p0 < 1e-3) continue;
+    const ct = (t) => when + (t - from);
+    const src = ac.createBufferSource();
+    src.buffer = L.take.buffer;
+    const g = ac.createGain();
+    if (L.lp) {
+      const f = ac.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = Math.min(L.lp, ac.sampleRate * 0.45); f.Q.value = -3.0103;   // Butterworth
+      src.connect(f); f.connect(g);
+    } else src.connect(g);
+    g.connect(dest);
+    g.gain.value = tailEnvAt(L, p0);
+    const curve = (t0, t1) => {
+      if (t1 - t0 < 1e-4) return;
+      const n = Math.max(2, Math.min(4096, Math.ceil((t1 - t0) * 2000)));
+      const arr = new Float32Array(n);
+      for (let k = 0; k < n; k++) arr[k] = tailEnvAt(L, t0 + (t1 - t0) * k / (n - 1) - (k === n - 1 ? 1e-7 : 0));
+      try { g.gain.setValueCurveAtTime(arr, ct(t0), t1 - t0); }
+      catch (err) { try { g.gain.linearRampToValueAtTime(arr[n - 1], ct(t1)); } catch (_) { /* ignore */ } }
+    };
+    const up = Math.min(L.E, p1);
+    if (up > p0) curve(p0, up);
+    curve(Math.max(L.E, p0) + (up > p0 ? 2e-4 : 0), p1);
+    src.start(ct(p0), Math.max(0, L.src0 + (p0 - L.L0)), p1 - p0);
+    srcs.push(src);
+  }
   return srcs;
 }
 
@@ -914,7 +1018,7 @@ function play(from, to, loop, keepStart) {
   stopSources();
   if (!S.clips.length) { toast('De edit is leeg'); return; }
   const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
-  const stopAt = to ?? editEnd();
+  const stopAt = to ?? mixEnd();
   from = Math.max(0, from);
   if (from >= stopAt - 0.01) { if (loop) return; from = 0; }
   const when = ac.currentTime + 0.06;
@@ -969,8 +1073,25 @@ function auditionJunction() {
   const s = S.sel;
   if (!s || s.kind !== 'junction') return;
   const j = junctionOf(s.a, s.b); if (!j) return;
-  const a = Math.max(0, j.s - S.preroll), b = j.e + S.preroll;
+  const [a, b] = auditionSpan(j);
   play(a, b, S.loopAudition ? [a, b] : null);
+}
+/** Stuk om een overgang te beluisteren: voor- en narol, en bij een galmstaart tot die is uitgeklonken. */
+function auditionSpan(j) {
+  const L = tailOf(j);
+  return [Math.max(0, j.s - S.preroll), Math.max(j.e + S.preroll, L && !L.dead ? L.L1 + 0.3 : 0)];
+}
+/** Alleen de galmstaart van overgang j, zonder de clips: zo hoor je precies wat eronder wordt gelegd. */
+function playTailOnly(j) {
+  const L = tailOf(j);
+  if (!L || L.dead) { toast('Er is hier geen galm om af te spelen'); return; }
+  stopSources();
+  const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
+  const when = ac.currentTime + 0.06;
+  const srcs = scheduleGraph(ac, S.master, L.L0, L.L1, when, { tailOnly: L.a.id });
+  S.playing = { mode: 'tail', srcs, from: L.L0, to: L.L1, when, loop: null, start: S.playhead };
+  S.playhead = L.L0;
+  updatePlayBtn();
 }
 
 function updatePlayBtn() {
@@ -1000,6 +1121,21 @@ function renderMono(t0, t1, sr) {
       out[k] += (v / nc) * e;
     }
   });
+  for (const L of tailLayers(env)) {
+    if (L.dead || L.L1 <= t0 || L.L0 >= t1) continue;
+    const chs = L.take.data, nc = chs.length, bsr = L.take.buffer.sampleRate, len = chs[0].length;
+    const lpf = L.lp ? biquadLP(L.lp, sr) : null;
+    const b = Math.min(n, Math.ceil((L.L1 - t0) * sr));
+    // met filter vanaf het begin van de staart rekenen, zodat het filter is ingeslingerd
+    for (let k = lpf ? Math.floor((L.L0 - t0) * sr) : Math.max(0, Math.floor((L.L0 - t0) * sr)); k < b; k++) {
+      const t = t0 + k / sr;
+      const si = Math.round((L.src0 + (t - L.L0)) * bsr);
+      let v = 0;
+      if (si >= 0 && si < len) { for (let ch = 0; ch < nc; ch++) v += chs[ch][si]; v /= nc; }
+      if (lpf) v = lpf(v);
+      if (k >= 0) out[k] += v * tailEnvAt(L, t);
+    }
+  }
   return out;
 }
 
@@ -1087,7 +1223,7 @@ function download(blob, name) {
 const safeName = (n) => (n || 'edit').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _().,-]+/g, '-').replace(/-+/g, '-').replace(/\s+/g, ' ').replace(/^[-. ]+|[-. ]+$/g, '').slice(0, 80) || 'edit';
 
 /** Render [a,b] van de edit en sla op als WAV of MP3, eventueel genormaliseerd. */
-async function exportAudio(a = 0, b = editEnd(), suffix = '') {
+async function exportAudio(a = 0, b = mixEnd(), suffix = '') {
   if (!S.clips.length) { toast('De edit is leeg'); return; }
   const fmtDef = EXPORT_FORMATS[S.exportFmt] || EXPORT_FORMATS.wav24;
   const ac = ensureAC();
@@ -1096,6 +1232,7 @@ async function exportAudio(a = 0, b = editEnd(), suffix = '') {
   if (fmtDef.ext === 'mp3' && sr > 48000) { sr = 48000; toast('MP3 kan niet hoger dan 48 kHz; er wordt 48 kHz gebruikt.'); }
   if (len <= 0.01) { toast('Niets om te exporteren'); return; }
   const used = new Set(S.clips.map((c) => c.takeId));
+  for (const L of tailLayers()) if (!L.dead) used.add(L.take.id);
   const nch = Math.max(1, ...S.takes.filter((t) => used.has(t.id)).map((t) => t.buffer.numberOfChannels));
   const target = await pickSaveTarget(safeName(S.project ? S.project.name : 'edit') + suffix + '.' + fmtDef.ext, fmtDef.ext);
   if (!target) { toast('Exporteren geannuleerd'); return; }
@@ -1136,7 +1273,7 @@ function inspectExport(el) {
   const sel = S.sel && S.sel.kind === 'export' ? S.sel : {};
   const r = S.lastRange;
   el.innerHTML = `
-    <div class="insp-head"><h2>Exporteren</h2><span>${S.project ? esc(S.project.name) : 'edit'} · ${fmt(editEnd(), 1)}</span></div>
+    <div class="insp-head"><h2>Exporteren</h2><span>${S.project ? esc(S.project.name) : 'edit'} · ${fmt(mixEnd(), 1)}</span></div>
     <div class="row">
       <label>Formaat <select id="exFmt">${Object.entries(EXPORT_FORMATS).map(([k, v]) => `<option value="${k}"${k === S.exportFmt ? ' selected' : ''}>${v.label}</option>`).join('')}</select></label>
       <label>Samplefrequentie <select id="exRate">${[['project', `zoals het project (${S.ac ? khz(S.ac.sampleRate) : '?'})`], ['44100', '44,1 kHz (cd)'], ['48000', '48 kHz (video)'], ['96000', '96 kHz']].map(([k, l]) => `<option value="${k}"${k === String(S.exportRate) ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1154,7 +1291,7 @@ function inspectExport(el) {
   $('exRate').onchange = (e) => { S.exportRate = e.target.value; saveSettings(); };
   if ($('exDither')) $('exDither').onchange = (e) => { S.dither = e.target.value; saveSettings(); };
   $('exNormDb').onchange = (e) => { S.normDb = clamp(+e.target.value || -1, -24, 0); saveSettings(); };
-  $('exAll').onclick = () => exportAudio(0, editEnd());
+  $('exAll').onclick = () => exportAudio(0, mixEnd());
   if (r) $('exSel').onclick = () => exportAudio(r[0], r[1], ' (selectie)');
 }
 
@@ -1458,6 +1595,33 @@ function drawBase() {
     }
   });
 
+  // galmstaarten: lichtere strook onderin, onder de nieuwe take door
+  tailLayers(env).forEach((L) => {
+    if (L.dead) return;
+    const xa = px(L.L0), xE = px(L.E), xb = px(L.L1);
+    if (xb < -10 || xa > W + 10) return;
+    const sel = S.sel && S.sel.kind === 'junction' && S.sel.a === L.a.id;
+    const col = L.take.color, by = y + h - TAIL_H, mid = by + TAIL_H / 2;
+    g.fillStyle = sel ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.07)';
+    g.fillRect(xE, by, xb - xE, TAIL_H);
+    g.fillStyle = hexA(col, sel ? 0.7 : 0.45);
+    drawWave(g, L.take, L.L0 - L.src0, Math.max(xa, 0), Math.min(xb, W), tAt, 1 / S.pps, mid, TAIL_H / 2 - 2, (t) => tailEnvAt(L, t) / L.g);
+    g.strokeStyle = sel ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)'; g.lineWidth = 1; g.setLineDash([4, 3]);
+    g.beginPath();
+    for (let xx = Math.max(xa, 0); xx <= Math.min(xb, W); xx += 2) {
+      const yy = by + 1 + (1 - tailEnvAt(L, tAt(xx)) / L.g) * (TAIL_H - 2);
+      xx === Math.max(xa, 0) ? g.moveTo(xx, yy) : g.lineTo(xx, yy);
+    }
+    g.stroke(); g.setLineDash([]);
+    g.fillStyle = sel ? '#fff' : '#c9ced8';                      // handvat: sleep om de lengte te veranderen
+    g.fillRect(Math.round(xb) - 1.5, by, 3, TAIL_H);
+    if (xb - xE > 70) {
+      g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top'; g.textAlign = 'right';
+      g.fillText(`${L.donor ? 'donor-galm' : 'galm'} ${(L.L1 - L.E).toFixed(1)} s`, xb - 5, by + 2);
+      g.textAlign = 'left';
+    }
+  });
+
   // takes
   S.takes.forEach((t, k) => {
     const y0 = RULER + EDIT_H + k * TAKE_H;
@@ -1738,6 +1902,7 @@ function select(sel) {
     S.lastRange = o && o.kind === 'erange' ? [Math.min(o.t0, o.t1), Math.max(o.t0, o.t1)] : null;
   }
   S.sel = sel;
+  if (S.pick && !(sel && sel.kind === 'junction' && sel.a === S.pick.a)) S.pick = null;
   if (!(sel && sel.kind === 'take' && S.range && S.range.takeId === sel.id)) S.range = null;
   S.xfView = null;
   S.dirty = true;
@@ -1818,6 +1983,7 @@ function renderInspector() {
       <li><b>Eén noot of kort stuk vervangen:</b> sleep in de tijdbalk over de noot (of zet <kbd>D</kbd> en <kbd>⇧D</kbd>), klik de take die je wilt en druk <kbd>E</kbd>. De editor zoekt in die take zelf het begin én eind van hetzelfde stuk en zet het ertussen, met crossfades. De rest van de edit blijft zoals hij was.</li>
       <li><b>Takes op een klik:</b> sleep in een take-baan om een stuk te selecteren en druk <kbd>E</kbd>. Dat stuk vervangt de edit op precies dezelfde plek, met crossfades aan beide kanten.</li>
       <li><b>Klik op een crossfade</b> (het kruis tussen twee clips) om vorm en lengte in te stellen, het knippunt te verschuiven, de fase uit te lijnen en de overgang te beluisteren (<kbd>A</kbd>).</li>
+      <li><b>Galm valt weg bij een wissel?</b> Klik op de crossfade en zet <b>Galmstaart</b> aan (<kbd>G</kbd>): de vorige take klinkt zacht door en sterft uit onder de nieuwe. Zingt de vorige take meteen verder, kies dan een <b>donor-galm</b> uit een plek waar het koor stopt.</li>
       <li>Werken je takes niet op een klik? Selecteer een take en gebruik <i>Auto-sync</i> of <kbd>Alt</kbd>+sleep de take-baan om hem uit te lijnen.</li>
       <li><b>Exporteer</b> de edit als WAV. Alles is niet-destructief: je bronbestanden worden nooit aangepast en blijven op je eigen apparaat.</li>
       <li>Je werk wordt <b>automatisch bewaard</b> als project, inclusief de audio, op dit apparaat. Bij het openen ga je verder waar je was; via <b>Projecten</b> open je eerdere projecten of begin je een nieuw.</li>
@@ -1828,7 +1994,7 @@ function renderInspector() {
       <span><kbd>S</kbd> knippen op afspeelkop</span>
       <span><kbd>D</kbd> / <kbd>⇧D</kbd> doel in/uit · <kbd>B</kbd> / <kbd>⇧B</kbd> bron in/uit · <kbd>E</kbd> overnemen</span>
       <span><kbd>H</kbd> takes hier uitlijnen</span>
-      <span><kbd>A</kbd> crossfade beluisteren</span>
+      <span><kbd>A</kbd> crossfade beluisteren · <kbd>G</kbd> galmstaart aan/uit</span>
       <span><kbd>Delete</kbd> clip verwijderen</span>
       <span><kbd>←</kbd> <kbd>→</kbd> knip ±1 ms (Shift ±10 ms)</span>
       <span><kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> ongedaan maken</span>
@@ -1868,6 +2034,7 @@ function inspectJunction(el, j) {
       <button id="xfDetail" title="Beide kanten groot onder en over elkaar, met zoom tot op de sample">Uitlijnen in detail…</button>
       <button id="xfLevel" title="Meet het niveau van A en B over 3 s rond de knip en past de gain van clip B aan, zodat er geen volumesprong is">Volume gelijk maken</button>
     </div>
+    ${tailRows(j)}
     <div class="row">
       <button id="xfPlay" class="primary">${S.playing && S.playing.loop ? '■ Stop' : '▶ Beluister'} <kbd>A</kbd></button>
       <label><input type="checkbox" id="xfLoop"${S.loopAudition ? ' checked' : ''}> Herhalen</label>
@@ -1897,8 +2064,59 @@ function inspectJunction(el, j) {
   $('xfPlay').onclick = () => { if (S.playing) { stop(); renderInspector(); } else { auditionJunction(); renderInspector(); } };
   $('xfLoop').onchange = (e) => { S.loopAudition = e.target.checked; };
   $('preroll').onchange = (e) => { S.preroll = clamp(+e.target.value || 2, 0.2, 20); saveSettings(); };
+  bindTailRows(el, j);
   bindXfCanvas(j);
   requestAnimationFrame(drawXf);
+}
+
+/** Galmstaart-instellingen in het crossfade-paneel. */
+function tailRows(j) {
+  const tl = j.a.tail, ta = takeOf(j.a.takeId);
+  const head = `<label title="Laat de galm van de vorige take (A) na de overgang zacht doorklinken en uitsterven onder de nieuwe take. Zonder dit valt de galm van de kerk bij de knip weg."><input type="checkbox" id="tlOn"${tl ? ' checked' : ''}> <b style="color:var(--text)">Galmstaart</b> <kbd>G</kbd></label>`;
+  if (!tl) return `<div class="row">${head}<span class="hint">Aan: de vorige take klinkt na de overgang zacht door en sterft langzaam uit, zodat de galm van de ruimte niet abrupt wegvalt.</span></div>`;
+  const L = tailOf(j), dn = L && L.donor ? takeOf(tl.donor.takeId) : null;
+  const picking = S.pick && S.pick.a === j.a.id;
+  const short = L && !L.dead && L.L1 - L.E < tl.len - 0.05;
+  return `<div class="row">${head}
+      <label>Lengte <input type="range" id="tlLenR" min="${TAIL_MIN}" max="${TAIL_MAX}" step="0.1" value="${tl.len}" style="width:140px"><input type="number" id="tlLen" min="${TAIL_MIN}" max="${TAIL_MAX}" step="0.1" value="${tl.len.toFixed(1)}" style="width:60px"> s</label>
+      <label>Volume <input type="range" id="tlGainR" min="-30" max="6" step="0.5" value="${tl.gain}" style="width:110px"><input type="number" id="tlGain" min="-60" max="12" step="0.5" value="${tl.gain.toFixed(1)}" style="width:64px"> dB</label>
+      <label title="Laagdoorlaatfilter op de staart: medeklinkers en directe klank verdwijnen, de (doffe) galm blijft. Lager = doffer."><input type="checkbox" id="tlLpOn"${tl.lp ? ' checked' : ''}> Doffer</label>
+      ${tl.lp ? `<label>tot <input type="number" id="tlLp" min="200" max="12000" step="100" value="${tl.lp}"> Hz</label>` : ''}
+      <button id="tlSolo" title="Speelt alleen de galmstaart, zonder de clips">▶ Alleen de galm</button>
+    </div>
+    <div class="row">
+      <span class="group">Galm uit: <b style="color:var(--text)">${dn ? `donor · ${esc(dn.name)} vanaf ${fmt(tl.donor.offset, 1)}` : `take A · ${esc(ta.name)} loopt door`}</b></span>
+      <button id="tlDonor" title="Zingt de vorige take na de knip meteen verder, dan hoor je dubbele stemmen. Gebruik dan de galm van een plek waar het koor echt stopt (rust, fermate, slotakkoord).">${picking ? 'Annuleer aanwijzen' : dn ? 'Andere donor-galm…' : 'Donor-galm kiezen…'}</button>
+      ${dn ? '<button id="tlOwn">Terug naar galm van take A</button>' : ''}
+      <span class="hint">${picking ? '<b>Sleep nu in een take-baan</b> over de galm: begin waar het koor stopt en sleep zo ver als de galm moet duren.'
+        : L && L.dead ? '<b>Let op:</b> deze take houdt bij de knip op, er is geen galm om te laten doorklinken. Kies een donor-galm.'
+        : short ? `De ${dn ? 'donor-take' : 'take'} houdt ${(L.L1 - L.E).toFixed(1)} s na de knip op; langer dan dat kan de galm dus niet klinken.`
+        : 'De lichte strook onderin de EDIT-baan is de galm; sleep het eind om de lengte te veranderen.'}</span>
+    </div>`;
+}
+function bindTailRows(el, j) {
+  const a = j.a;
+  $('tlOn').onchange = () => toggleTail(j);
+  if (!a.tail) return;
+  const live = { undo: false };
+  const liveSet = (fn) => { if (!live.undo) { pushUndo(); live.undo = true; } fn(); S.dirty = true; };
+  const done = () => { live.undo = false; rememberTail(a.tail); afterEdit(); };
+  $('tlLenR').oninput = (e) => liveSet(() => { a.tail.len = +e.target.value; $('tlLen').value = a.tail.len.toFixed(1); });
+  $('tlLenR').onchange = done;
+  $('tlLen').onchange = (e) => { mutate(() => { a.tail.len = clamp(+e.target.value || S.tailDef.len, TAIL_MIN, TAIL_MAX); }); rememberTail(a.tail); };
+  $('tlGainR').oninput = (e) => liveSet(() => { a.tail.gain = +e.target.value; $('tlGain').value = a.tail.gain.toFixed(1); });
+  $('tlGainR').onchange = done;
+  $('tlGain').onchange = (e) => { mutate(() => { a.tail.gain = clamp(+e.target.value || 0, -60, 12); }); rememberTail(a.tail); };
+  $('tlLpOn').onchange = (e) => { mutate(() => { a.tail.lp = e.target.checked ? (S.tailDef.lp || 2500) : 0; }); if (a.tail.lp) rememberTail(a.tail); };
+  if ($('tlLp')) $('tlLp').onchange = (e) => { mutate(() => { a.tail.lp = clamp(Math.round(+e.target.value || 2500), 200, 12000); }); rememberTail(a.tail); };
+  $('tlSolo').onclick = () => { if (S.playing) { stop(); return; } playTailOnly(j); };
+  $('tlDonor').onclick = () => {
+    if (S.pick) { S.pick = null; S.range = null; S.dirty = true; renderInspector(); return; }
+    S.pick = { kind: 'donor', a: j.a.id, b: j.b.id };
+    renderInspector();
+    toast('Sleep in een take-baan over de galm die je wilt gebruiken: begin waar het koor stopt');
+  };
+  if ($('tlOwn')) $('tlOwn').onclick = () => mutate(() => { delete a.tail.donor; });
 }
 
 function bindXfCanvas() {
@@ -2274,7 +2492,7 @@ function assembleEdit(take, d, s, alignLane = true) {
     const out = [];
     for (const c of S.clips) {
       if (end(c) <= d + 1e-9) out.push(c);
-      else if (c.start < d) out.push({ ...c, dur: d - c.start, fadeOut: 0.005 });
+      else if (c.start < d) out.push({ ...c, dur: d - c.start, fadeOut: 0.005, tail: null });
     }
     const nc = newClip(take, d, s, take.buffer.duration - s);
     out.push(nc);
@@ -2303,7 +2521,7 @@ function patchEdit(take, din, dout, sin, sout, dropUntil = null, alignLane = tru
       const ce = end(c);
       if (ce <= din + 1e-9) { out.push(c); continue; }
       if (c.start >= dout - 1e-9) { out.push({ ...c, start: c.start + delta }); continue; }
-      if (c.start < din) out.push({ ...c, dur: din - c.start, fadeOut: 0.005 });
+      if (c.start < din) out.push({ ...c, dur: din - c.start, fadeOut: 0.005, tail: null });
       if (dropUntil != null && ce <= dropUntil + 1e-6) continue;   // uitloop van de vervangen take in de oude crossfade
       if (ce > dout) out.push({ ...c, id: c.start < din ? newId() : c.id, start: dout + delta, offset: c.offset + (dout - c.start), dur: ce - dout, fadeIn: 0.005, xShape: 'eqp' });
     }
@@ -2410,7 +2628,7 @@ function toggleLoop() {
   const s = S.sel;
   let a, b;
   if (s && s.kind === 'erange') { a = Math.min(s.t0, s.t1); b = Math.max(s.t0, s.t1); }
-  else if (s && s.kind === 'junction') { const j = junctionOf(s.a, s.b); if (j) { a = Math.max(0, j.s - S.preroll); b = j.e + S.preroll; } }
+  else if (s && s.kind === 'junction') { const j = junctionOf(s.a, s.b); if (j) [a, b] = auditionSpan(j); }
   if (a == null) { toast('Sleep eerst in de tijdbalk over een stuk (of klik een crossfade aan) om dat te herhalen'); return; }
   play(a, b, [a, b]);
   renderInspector();
@@ -2780,7 +2998,10 @@ function laneAt(y) {
   const t = S.takes[k];
   return t ? { kind: 'take', take: t } : { kind: 'none' };
 }
-function hitEdit(x) {
+function hitEdit(x, y) {
+  if (y != null && y >= RULER + EDIT_H - 6 - TAIL_H) {            // eind van een galmstaart (strook onderin)
+    for (const L of tailLayers()) if (!L.dead && Math.abs(x - px(L.L1)) <= 6) return { type: 'tail', L };
+  }
   for (const j of junctions()) {
     const xs = px(j.s), xe = px(j.e);
     if (x >= xs - 5 && x <= xe + 5) return { type: 'junction', j };
@@ -2818,14 +3039,19 @@ cv.addEventListener('pointerdown', (e) => {
     d.type = 'erange';
     if (lane.kind === 'edit') d.hit = hitEdit(x);
   }
+  else if (S.pick && lane.kind === 'take') { d.type = 'range'; d.take = lane.take; }   // donor-galm aanwijzen: de overgang blijft geselecteerd
   else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) {   // hand: slepen schuift altijd het beeld
     d.type = 'pan'; d.view0 = S.view;
     if (lane.kind === 'edit') d.hit = hitEdit(x); else d.take = lane.take;
   }
   else if (lane.kind === 'none') { d.type = 'playhead'; S.playhead = Math.max(0, t); }
   else if (lane.kind === 'edit') {
-    const h = hitEdit(x);
+    const h = hitEdit(x, y);
     if (!h) { d.type = 'pan'; d.view0 = S.view; select(null); }   // leeg vlak: slepen schuift het beeld, klikken zet de afspeelkop
+    else if (h.type === 'tail') {
+      d.type = 'tail'; d.a = h.L.a; d.max = Math.min(TAIL_MAX, h.L.avail);
+      if (!(S.sel && S.sel.kind === 'junction' && S.sel.a === h.L.j.a.id)) select({ kind: 'junction', a: h.L.j.a.id, b: h.L.j.b.id });
+    }
     else if (h.type === 'junction') {
       d.type = e.altKey ? 'xflen' : 'roll'; d.a = h.j.a; d.b = h.j.b; d.oa = { ...h.j.a }; d.ob = { ...h.j.b }; d.len = h.j.len;
       select({ kind: 'junction', a: h.j.a.id, b: h.j.b.id });
@@ -2857,11 +3083,11 @@ cv.addEventListener('pointermove', (e) => {
   if (!d || d.xf) { hoverCursor(x, y, e.altKey); return; }
   const dx = x - d.x0;
   // clips en crossfades pas verslepen na 6 px, zodat een klik met een kleine trilling niets verschuift
-  const thr = ['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type) ? 6 : 3;
+  const thr = ['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker', 'tail'].includes(d.type) ? 6 : 3;
   if (!d.moved && Math.abs(dx) < thr) return;
   if (!d.moved) {
     d.moved = true;
-    if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker'].includes(d.type)) pushUndo();
+    if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker', 'tail'].includes(d.type)) pushUndo();
     if (d.type === 'move' && d.metaClick) select({ kind: 'clip', id: d.c.id });
   }
   const dt = dx / S.pps, sh = e.shiftKey;
@@ -2933,6 +3159,9 @@ cv.addEventListener('pointermove', (e) => {
       Object.assign(d.a, d.oa); Object.assign(d.b, d.ob);
       setXfLen(d.a, d.b, Math.max(0, d.len + 2 * dt));
       break;
+    case 'tail':
+      if (d.a.tail) d.a.tail.len = Math.round(clamp(tAt(x) - end(d.a), TAIL_MIN, Math.max(TAIL_MIN, d.max)) * 100) / 100;
+      break;
     case 'range': {
       const tk = d.take;
       const lo = tk.sync, hi = tk.sync + tk.buffer.duration;
@@ -2987,11 +3216,15 @@ function endDrag(e) {
   if (!d.moved) {
     if (['move', 'moveGroup', 'slip', 'trimL', 'trimR'].includes(d.type)) S.playhead = Math.max(0, d.t0);
     if (d.type === 'range') S.playhead = d.t0;   // in een take-baan mag dat ook vóór 0:00 zijn
-    if (d.type === 'range') { S.range = null; renderInspector(); updateButtons(); }
-    if (S.playing && d.type !== 'roll' && d.type !== 'xflen') restartAtPlayhead();
+    if (d.type === 'range') { S.range = null; if (!S.pick) renderInspector(); updateButtons(); }
+    if (S.playing && d.type !== 'roll' && d.type !== 'xflen' && d.type !== 'tail') restartAtPlayhead();
   } else if (d.type === 'range') {
     if (S.range && Math.abs(S.range.t1 - S.range.t0) < 0.01) S.range = null;
-    renderInspector(); updateButtons();
+    if (S.pick && S.range) applyDonor();
+    else { renderInspector(); updateButtons(); }
+  } else if (d.type === 'tail') {
+    if (d.a.tail) rememberTail(d.a.tail);
+    afterEdit();
   } else if (d.type === 'playhead') {
     if (S.playing) restartAtPlayhead();
   } else {
@@ -3039,12 +3272,13 @@ function setTool(t, quiet) {
 function hoverCursor(x, y, alt) {
   const lane = laneAt(y);
   let cur = 'default';
-  if (lane.kind === 'ruler' && S.markers.some((m) => Math.abs(px(m.t) - x) < 7)) cur = 'ew-resize';
+  if (S.pick && lane.kind === 'take') cur = 'crosshair';
+  else if (lane.kind === 'ruler' && S.markers.some((m) => Math.abs(px(m.t) - x) < 7)) cur = 'ew-resize';
   else if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
   else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
   else if (S.tool === 'select' && lane.kind === 'edit') cur = 'default';
   else if (lane.kind === 'edit') {
-    const h = hitEdit(x);
+    const h = hitEdit(x, y);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
     else cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
   } else if (lane.kind === 'take') cur = alt ? 'ew-resize' : 'text';
@@ -3161,6 +3395,7 @@ document.addEventListener('keydown', (e) => {
     case 'b': case 'B': setSourcePoint(e.shiftKey); break;
     case 'h': case 'H': alignTakesHere(); break;
     case 'a': case 'A': if (S.playing) stop(); else auditionJunction(); renderInspector(); break;
+    case 'g': case 'G': if (sj) toggleTail(sj); else toast('Klik eerst op een crossfade (⋈) en druk dan G voor een galmstaart'); break;
     case 'Delete': case 'Backspace': e.preventDefault(); deleteSelection(e.altKey); break;
     case '+': case '=': zoomAt(px(S.playhead) >= 0 && px(S.playhead) <= cssW ? px(S.playhead) : cssW / 2, 1.5); break;
     case '-': case '_': zoomAt(cssW / 2, 1 / 1.5); break;
@@ -3174,7 +3409,7 @@ document.addEventListener('keydown', (e) => {
     case 'l': case 'L': toggleLoop(); break;
     case 'Home': S.playhead = 0; S.view = 0; S.dirty = true; updateScroll(); if (S.playing) restartAtPlayhead(); break;
     case 'End': S.playhead = editEnd(); break;
-    case 'Escape': S.range = null; clearPoints(); select(null); break;
+    case 'Escape': S.pick = null; S.range = null; clearPoints(); select(null); break;
     case 'ArrowLeft': case 'ArrowRight': {
       e.preventDefault();
       const dir = k === 'ArrowLeft' ? -1 : 1;
@@ -3201,15 +3436,42 @@ window.addEventListener('drop', (e) => {
 });
 
 /* ---------- demo ---------- */
+/** Eenvoudige kerkgalm voor de demo (Schroeder: vier kamfilters met demping, twee allpass-filters). */
+function demoReverb(d, sr, rt = 2.4) {
+  const n = d.length, wet = new Float32Array(n);
+  for (const ms of [29.7, 37.1, 41.1, 43.7]) {
+    const D = Math.round(ms * sr / 1000), fb = Math.pow(10, -3 * (ms / 1000) / rt), buf = new Float32Array(D);
+    let lp = 0;
+    for (let k = 0, i = 0; k < n; k++) {
+      const y = buf[i];
+      lp = y * 0.6 + lp * 0.4;                // hoge tonen sterven sneller uit
+      buf[i] = d[k] + lp * fb;
+      wet[k] += y * 0.25;
+      if (++i === D) i = 0;
+    }
+  }
+  for (const ms of [5.0, 1.7]) {
+    const D = Math.round(ms * sr / 1000), buf = new Float32Array(D), gA = 0.7;
+    for (let k = 0, i = 0; k < n; k++) {
+      const z = buf[i], x = wet[k];
+      buf[i] = x + z * gA; wet[k] = z - gA * buf[i];
+      if (++i === D) i = 0;
+    }
+  }
+  for (let k = 0; k < n; k++) d[k] += wet[k] * 0.55;
+}
+
 function makeDemo() {
   const ac = ensureAC();
-  const sr = ac.sampleRate, beat = 0.5, dur = 16 * beat * 2 + 1;
+  const sr = ac.sampleRate, beat = 0.5, dur = 16 * beat * 2 + 4;
   // Een melodie van 32 tellen; elke take heeft ergens een "fout" zodat comping zin heeft.
   const mel = [64, 67, 69, 71, 72, 71, 69, 67, 65, 69, 72, 76, 74, 72, 71, 69, 67, 71, 74, 77, 76, 74, 72, 71, 69, 72, 71, 69, 67, 69, 71, 72];
   const takes = [
-    { name: 'Demo take 1', bright: 0.5, wrong: { 9: 70, 10: 73 }, jitter: 0.012, level: 0.42, seed: 1 },
-    { name: 'Demo take 2', bright: 0.7, wrong: { 19: 78, 24: 68 }, jitter: 0.008, level: 0.36, seed: 2 },
+    { name: 'Demo take 1', bright: 0.5, wrong: { 9: 70, 10: 73 }, jitter: 0.012, level: 0.42, seed: 1, cough: 12.3 },
+    { name: 'Demo take 2', bright: 0.7, wrong: { 19: 78, 24: 68 }, jitter: 0.008, level: 0.36, seed: 2, click: 7.31 },
     { name: 'Demo take 3', bright: 0.35, wrong: { 3: 72, 28: 66 }, jitter: 0.015, level: 0.45, seed: 3 },
+    // een 'herneming': begint pas halverwege, dus zonder de galm van wat eraan voorafging (om de galmstaart te proberen)
+    { name: 'Demo take 4 (herneming)', bright: 0.55, wrong: {}, jitter: 0.008, level: 0.4, seed: 4, from: 16 },
   ];
   busy(true, 'Demo genereren…');
   setTimeout(() => {
@@ -3219,6 +3481,7 @@ function makeDemo() {
       let seed = tk.seed * 9301;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
       mel.forEach((m, i) => {
+        if (i < (tk.from || 0)) return;
         const midi = tk.wrong[i] ?? m;
         const f = 440 * Math.pow(2, (midi - 69) / 12) * (1 + (rnd() - 0.5) * 0.004);
         const t0 = 0.5 + i * beat + (rnd() - 0.5) * 2 * tk.jitter;
@@ -3232,13 +3495,20 @@ function makeDemo() {
           d[s0 + k] += v * env * vel;
         }
       });
+      if (tk.cough) {                          // een 'kuchje' in de zaal: korte ruisstoot, om te repareren
+        const s0 = Math.round(tk.cough * sr), len = Math.round(0.16 * sr);
+        let lp = 0;
+        for (let k = 0; k < len; k++) { lp += ((rnd() - 0.5) - lp) * 0.35; d[s0 + k] += lp * 0.5 * Math.sin(Math.PI * k / len) ** 2; }
+      }
+      demoReverb(d, sr);
+      if (tk.click) { const s0 = Math.round(tk.click * sr); d[s0] += 0.5; d[s0 + 1] -= 0.38; d[s0 + 2] += 0.16; }   // een digitale tik
       // zachte ruimte/ruis zodat de takes niet digitaal stil zijn
       for (let k = 0; k < n; k++) d[k] += (rnd() - 0.5) * 0.004;
       addTake(tk.name, buf);
     }
     busy(false);
     buildHeads(); zoomFit(); afterEdit();
-    toast('Demo geladen: take 1 staat in de edit. Selecteer in take 2 het stuk rond 0:05 en druk E.');
+    toast('Demo geladen: take 1 staat in de edit. Selecteer in take 2 het stuk rond 0:05 en druk E. Take 4 is een herneming vanaf 0:08: probeer daar de galmstaart (G).');
   }, 30);
 }
 
@@ -3520,7 +3790,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb }));
+  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb, tail: S.tailDef }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -3537,6 +3807,7 @@ function loadSettings() {
   if (['auto', 'always', 'off'].includes(o.dither)) S.dither = o.dither;
   if (typeof o.norm === 'boolean') S.normalize = o.norm;
   if (typeof o.normDb === 'number') S.normDb = o.normDb;
+  if (o.tail && typeof o.tail.len === 'number' && typeof o.tail.gain === 'number') S.tailDef = { len: clamp(o.tail.len, TAIL_MIN, TAIL_MAX), gain: o.tail.gain, lp: +o.tail.lp || 0 };
 }
 function applySettingsUI() {
   setTool(S.tool, true);
