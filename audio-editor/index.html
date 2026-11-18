@@ -179,6 +179,13 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; position: 
 .head .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.06); }
 .head .meta { color: var(--muted); font-size: 11.5px; display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
 .head button { height: 22px; padding: 0 8px; font-size: 11.5px; border-radius: 6px; }
+.head .name button.fold, .head .name button.unfrag { height: 20px; min-width: 18px; padding: 0; background: none; border-color: transparent; color: var(--muted); font-size: 11px; flex: none; }
+.head .name button.fold:hover, .head .name button.unfrag:hover { color: var(--text); background: var(--panel2); }
+.head .name button.unfrag { margin-left: auto; font-size: 14px; }
+.head.frag { padding-left: 18px; background: #192030; }
+.head.frag .sw { border-radius: 2px; }
+.head.folded { padding-top: 0; padding-bottom: 0; }
+.head.folded .name { font-weight: 500; font-size: 12px; }
 .head:hover:not(.ruler):not(.edit):not(.placeholder) { background: #1f2636; }
 .head.sel { background: #222a3c; border-left-color: var(--c, var(--accent)); }
 .head.placeholder { color: var(--faint); font-size: 11.5px; cursor: default; }
@@ -400,6 +407,7 @@ body.empty #welcome { display: block; }
       <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Afspeelkop 1 s (<kbd>⇧</kbd> 0,1 s)</dd>
       <dt><kbd>M</kbd></dt><dd>Marker zetten</dd>
       <dt><kbd>,</kbd> <kbd>.</kbd></dt><dd>Vorige / volgende marker</dd>
+      <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Naar de baan erboven / eronder; tijdens het afspelen meteen wisselen</dd>
     </dl></section>
     <section><h3>Montage</h3><dl>
       <dt><kbd>D</kbd> <kbd>⇧D</kbd></dt><dd>Doel in / uit</dd>
@@ -408,6 +416,8 @@ body.empty #welcome { display: block; }
       <dt><kbd>E</kbd></dt><dd>Overnemen</dd>
       <dt><kbd>⌥E</kbd></dt><dd>Overnemen, alles erna vervangen</dd>
       <dt><kbd>Esc</kbd></dt><dd>Punten en selectie wissen</dd>
+      <dt><kbd>⌘C</kbd></dt><dd>Selectie in een take kopiëren als fragment</dd>
+      <dt><kbd>⌘V</kbd></dt><dd>Fragment plakken onder de opname, uitgelijnd op de afspeelkop</dd>
     </dl></section>
     <section><h3>Bewerken</h3><dl>
       <dt><kbd>S</kbd></dt><dd>Knippen op de afspeelkop</dd>
@@ -459,7 +469,7 @@ body.empty #welcome { display: block; }
    ===================================================================== */
 
 const $ = (id) => document.getElementById(id);
-const RULER = 26, EDIT_H = 150, TAKE_H = 76, TAIL_H = 30;
+const RULER = 26, EDIT_H = 150, TAKE_H = 76, TAIL_H = 30, FOLD_H = 26;
 // Glas-in-lood: kobalt, amber, smaragd, robijn, violet, turkoois, roze, oker
 const COLORS = ['#5b8def', '#e39b3b', '#3fb27f', '#d95c7a', '#a67fe0', '#2fb5b3', '#e58bb8', '#c9b24a'];
 const OLD_COLORS = ['#4f9dff', '#ff9f43', '#2ed573', '#e056fd', '#ffd32a', '#ff6b81', '#1dd1a1', '#a29bfe'];
@@ -494,12 +504,48 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const dbLin = (db) => Math.pow(10, db / 20);
 const end = (c) => c.start + c.dur;
 const takeOf = (id) => S.takes.find((t) => t.id === id);
+/* ---------- fragmenten (virtuele takes) ----------
+   Een fragment is een eigen baan die verwijst naar een stuk [win0, win1] (in seconden in de bron) van een opname.
+   Het heeft een eigen sync, naam en kleur, maar deelt audio, golfvorm en reparaties met de opname:
+   er wordt niets gekopieerd en de opname verandert niet. Clips uit een fragment verwijzen naar dezelfde bron-tijden,
+   dus een fragment weghalen laat de edit klinken zoals hij was (de clips gaan dan over naar de opname). */
+const realTakes = () => S.takes.filter((t) => !t.frag);
+const rootOf = (t) => (t && t.frag ? takeOf(t.parent) || t : t);
+/** Venster van een baan in bron-seconden: het hele bestand, of het stuk van een fragment. */
+const winOf = (t) => (t.frag ? t.win : [0, t.buffer.duration]);
+function makeFrag(par, f) {
+  const t = { id: f.id, name: f.name, parent: par.id, win: [f.win[0], f.win[1]], sync: f.sync, color: f.color, collapsed: !!f.collapsed, frag: true };
+  for (const k of ['buffer', 'data', 'peaks', 'repairs', 'stash', 'srcRate', 'fileKey']) {
+    Object.defineProperty(t, k, { get: () => par[k], set: (v) => { par[k] = v; }, enumerable: false });
+  }
+  Object.defineProperty(t, 'stored', { get: () => true, set: () => {}, enumerable: false });
+  Object.defineProperty(t, 'file', { get: () => null, set: () => {}, enumerable: false });
+  return t;
+}
+/** Naam in de kop: bij een fragment zonder de (bekende) naam van de opname erboven. */
+function headName(t) {
+  if (!t.frag) return t.name;
+  const r = takeOf(t.parent), pre = r ? r.name + ' · ' : null;
+  return pre && t.name.startsWith(pre) ? t.name.slice(pre.length) : t.name;
+}
+const fragRec = (t) => ({ id: t.id, name: t.name, parent: t.parent, win: [t.win[0], t.win[1]], sync: t.sync, color: t.color, collapsed: !!t.collapsed });
+/** Lichtere tint van de kleur van de opname. */
+function tint(hex, f = 0.38) {
+  const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * f));
+  return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+/** Banen onder de edit, van boven naar beneden: { t, y, h }. Ingeklapte banen zijn smal. */
+function lanes() {
+  let y = RULER + EDIT_H;
+  return S.takes.map((t) => { const h = t.collapsed ? FOLD_H : TAKE_H, o = { t, y, h }; y += h; return o; });
+}
+const laneOf = (t) => lanes().find((L) => L.t === t);
 const clipOf = (id) => S.clips.find((c) => c.id === id);
 const newId = () => S.nextId++;
 const px = (t) => (t - S.view) * S.pps;
 const tAt = (x) => S.view + x / S.pps;
 const editEnd = () => S.clips.reduce((m, c) => Math.max(m, end(c)), 0);
-const contentEnd = () => Math.max(editEnd(), ...S.takes.map((t) => t.sync + t.buffer.duration), 1);
+const contentEnd = () => Math.max(editEnd(), ...S.takes.map((t) => t.sync + (t.frag ? t.win[1] : t.buffer.duration)), 1);
 function hexA(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
@@ -644,10 +690,13 @@ async function importFiles(files) {
 }
 
 function removeTake(t) {
-  if (!confirm(`Take "${t.name}" verwijderen? Clips uit deze take verdwijnen ook uit de edit. Dit kan niet ongedaan worden gemaakt.`)) return;
+  if (t.frag) { removeFrag(t); return; }
+  const nf = S.takes.filter((x) => x.parent === t.id).length;
+  if (!confirm(`Take "${t.name}" verwijderen?${nf ? ` Ook de ${nf} fragment${nf === 1 ? '' : 'en'} ervan verdwijnen.` : ''} Clips uit deze take verdwijnen ook uit de edit. Dit kan niet ongedaan worden gemaakt.`)) return;
   stop();
-  S.takes = S.takes.filter((x) => x !== t);
-  S.clips = S.clips.filter((c) => c.takeId !== t.id);
+  const gone = new Set([t.id, ...S.takes.filter((x) => x.parent === t.id).map((x) => x.id)]);
+  S.takes = S.takes.filter((x) => !gone.has(x.id));
+  S.clips = S.clips.filter((c) => !gone.has(c.takeId));
   S.needCleanup = true;
   S.undo = []; S.redo = [];
   if (S.range && S.range.takeId === t.id) S.range = null;
@@ -1158,7 +1207,7 @@ function deleteSelection(leaveGap = false) {
 }
 
 /* ---------- undo ---------- */
-function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers, rep: S.takes.map((t) => [t.id, t.repairs || []]) }); }
+function snapshot() { return JSON.stringify({ clips: S.clips, sync: S.takes.map((t) => [t.id, t.sync]), markers: S.markers, rep: realTakes().map((t) => [t.id, t.repairs || []]), frags: S.takes.filter((t) => t.frag).map(fragRec), order: S.takes.map((t) => t.id) }); }
 function pushUndo() {
   S.undo.push(snapshot()); if (S.undo.length > 300) S.undo.shift();
   S.redoBackup = S.redo.slice();   // terug te zetten als de bewerking per saldo niets verandert
@@ -1167,11 +1216,23 @@ function pushUndo() {
 }
 function restore(str) {
   const o = JSON.parse(str);
+  if (o.frags) {                                   // fragmenten terugzetten zoals ze toen waren (ingeklapt blijft zoals nu)
+    const now = new Map(S.takes.filter((t) => t.frag).map((t) => [t.id, t]));
+    const list = realTakes();
+    for (const f of o.frags) {
+      const par = takeOf(f.parent); if (!par || par.frag) continue;
+      const old = now.get(f.id);
+      list.push(makeFrag(par, { ...f, collapsed: old ? old.collapsed : f.collapsed }));
+    }
+    const at = new Map((o.order || []).map((id, i) => [id, i]));
+    S.takes = list.sort((a, b) => (at.has(a.id) ? at.get(a.id) : 1e9) - (at.has(b.id) ? at.get(b.id) : 1e9));
+    buildHeads();
+  }
   S.clips = o.clips.filter((c) => takeOf(c.takeId));
   o.sync.forEach(([id, s]) => { const t = takeOf(id); if (t) t.sync = s; });
   (o.rep || []).forEach(([id, list]) => {
     const t = takeOf(id);
-    if (t && JSON.stringify(t.repairs || []) !== JSON.stringify(list)) { t.repairs = list; applyRepairs(t); }
+    if (t && !t.frag && JSON.stringify(t.repairs || []) !== JSON.stringify(list)) { t.repairs = list; applyRepairs(t); }
   });
   S.markers = o.markers || [];
   afterEdit();
@@ -1316,15 +1377,16 @@ function play(from, to, loop, keepStart) {
   updatePlayBtn();
 }
 
-function playTake(take, from) {
+function playTake(take, from, keepStart) {
+  const prevStart = keepStart && S.playing ? S.playing.start : null;
   stopSources();
   const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
-  const stopAt = take.sync + take.buffer.duration;
-  if (from >= stopAt - 0.01 || from < take.sync) from = take.sync;
+  const [wa, wb] = winOf(take), startAt = take.sync + wa, stopAt = take.sync + wb;
+  if (from >= stopAt - 0.01 || from < startAt) from = startAt;
   const when = ac.currentTime + 0.06;
   const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
-  src.start(when + Math.max(0, take.sync - from), Math.max(0, from - take.sync));
-  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from, to: stopAt, when, loop: null, start: from };
+  src.start(when, from - take.sync, stopAt - from);
+  S.playing = { mode: 'take', takeId: take.id, srcs: [src], from, to: stopAt, when, loop: null, start: prevStart ?? from };
   S.playhead = from;
   updatePlayBtn(); buildHeads();
 }
@@ -1332,7 +1394,8 @@ function playTake(take, from) {
 function playRange(take, t0, t1) {
   stopSources();
   const ac = ensureAC(); if (ac.state !== 'running') ac.resume();
-  t0 = Math.max(t0, take.sync); t1 = Math.min(t1, take.sync + take.buffer.duration);
+  const [wa, wb] = winOf(take);
+  t0 = Math.max(t0, take.sync + wa); t1 = Math.min(t1, take.sync + wb);
   if (t1 <= t0) return;
   const when = ac.currentTime + 0.06;
   const src = ac.createBufferSource(); src.buffer = take.buffer; src.connect(S.master);
@@ -1749,7 +1812,8 @@ let cssW = 600, cssH = 300, dpr = 1;
 function resize() {
   dpr = window.devicePixelRatio || 1;
   cssW = Math.max(100, $('canvasWrap').clientWidth);
-  cssH = RULER + EDIT_H + Math.max(1, S.takes.length) * TAKE_H;
+  const ls = lanes();
+  cssH = ls.length ? ls[ls.length - 1].y + ls[ls.length - 1].h : RULER + EDIT_H + TAKE_H;
   for (const c of [cv, base]) { c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr); }
   cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
   S.dirty = true;
@@ -1790,10 +1854,9 @@ function drawBase() {
 
   // lanes
   g.fillStyle = '#121722'; g.fillRect(0, RULER, W, EDIT_H);
-  S.takes.forEach((t, k) => {
-    const y = RULER + EDIT_H + k * TAKE_H;
+  lanes().forEach(({ t, y, h }, k) => {
     g.fillStyle = S.sel && S.sel.kind === 'take' && S.sel.id === t.id ? '#1e2537' : (k % 2 ? '#161b27' : '#181e2b');
-    g.fillRect(0, y, W, TAKE_H);
+    g.fillRect(0, y, W, h);
   });
 
   // ruler + grid
@@ -1917,36 +1980,43 @@ function drawBase() {
     }
   });
 
-  // takes
-  S.takes.forEach((t, k) => {
-    const y0 = RULER + EDIT_H + k * TAKE_H;
-    const xs = px(t.sync), xe = px(t.sync + t.buffer.duration);
+  // takes en fragmenten
+  lanes().forEach(({ t, y: y0, h: LH }) => {
+    const [wa, wb] = winOf(t), fold = LH < TAKE_H;
+    const xs = px(t.sync + wa), xe = px(t.sync + wb);
     if (xe > 0 && xs < W) {
-      g.fillStyle = hexA(t.color, 0.08); g.fillRect(xs, y0 + 4, xe - xs, TAKE_H - 8);
+      g.fillStyle = hexA(t.color, t.frag ? 0.12 : 0.08); g.fillRect(xs, y0 + 4, xe - xs, LH - 8);
       g.fillStyle = hexA(t.color, 0.26);
       S.clips.forEach((c) => {
         if (c.takeId !== t.id) return;
         const a = px(t.sync + c.offset), b = px(t.sync + c.offset + c.dur);
-        g.fillRect(a, y0 + 4, b - a, TAKE_H - 8);
+        g.fillRect(a, y0 + 4, b - a, LH - 8);
         g.fillRect(a, y0 + 4, b - a, 3);
       });
       g.fillStyle = hexA(t.color, 0.85);
-      drawWave(g, t, t.sync, Math.max(xs, 0), Math.min(xe, W), tAt, 1 / S.pps, y0 + TAKE_H / 2, TAKE_H / 2 - 7, null);
-      g.strokeStyle = hexA(t.color, 0.5); g.lineWidth = 1;
-      g.strokeRect(xs + 0.5, y0 + 4.5, xe - xs - 1, TAKE_H - 9);
-      for (const r of t.repairs || []) {                        // reparaties: groen streepje onderin
-        const a = px(t.sync + r.t0), b = px(t.sync + r.t1);
+      drawWave(g, t, t.sync, Math.max(xs, 0), Math.min(xe, W), tAt, 1 / S.pps, y0 + LH / 2, LH / 2 - (fold ? 4 : 7), null);
+      g.strokeStyle = hexA(t.color, t.frag ? 0.8 : 0.5); g.lineWidth = 1;
+      if (t.frag) g.setLineDash([5, 3]);
+      g.strokeRect(xs + 0.5, y0 + 4.5, xe - xs - 1, LH - 9);
+      g.setLineDash([]);
+      if (t.frag && !fold) {                                    // randen: sleep om het fragment groter of kleiner te maken
+        g.fillStyle = hexA(t.color, 0.9);
+        g.fillRect(Math.round(xs), y0 + LH / 2 - 9, 3, 18); g.fillRect(Math.round(xe) - 3, y0 + LH / 2 - 9, 3, 18);
+      }
+      if (!fold) for (const r of t.repairs || []) {             // reparaties: groen streepje onderin
+        if (r.t1 < wa || r.t0 > wb) continue;
+        const a = px(t.sync + Math.max(r.t0, wa)), b = px(t.sync + Math.min(r.t1, wb));
         if (b < 0 || a > W) continue;
         g.fillStyle = r.on && !S.bypass ? '#4fbf9a' : '#6e7690';
-        g.fillRect(Math.round(a) - 1, y0 + TAKE_H - 10, Math.max(3, b - a + 2), 5);
+        g.fillRect(Math.round(a) - 1, y0 + LH - 10, Math.max(3, b - a + 2), 5);
       }
     }
     if (S.range && S.range.takeId === t.id) {
       const a = px(Math.min(S.range.t0, S.range.t1)), b = px(Math.max(S.range.t0, S.range.t1));
-      g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(a, y0 + 2, b - a, TAKE_H - 4);
-      g.fillStyle = '#fff'; g.fillRect(a, y0 + 2, 1, TAKE_H - 4); g.fillRect(b - 1, y0 + 2, 1, TAKE_H - 4);
+      g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(a, y0 + 2, b - a, LH - 4);
+      g.fillStyle = '#fff'; g.fillRect(a, y0 + 2, 1, LH - 4); g.fillRect(b - 1, y0 + 2, 1, LH - 4);
     }
-    g.fillStyle = '#2f374b'; g.fillRect(0, y0 + TAKE_H - 1, W, 1);
+    g.fillStyle = '#2f374b'; g.fillRect(0, y0 + LH - 1, W, 1);
   });
   if (!S.takes.length) {
     g.fillStyle = '#4e5670'; g.font = '12px ' + UI_FONT; g.textBaseline = 'middle';
@@ -2016,16 +2086,16 @@ function drawBase() {
     flag(x, RULER + 2, P.destOut != null ? 'D in' : 'D');
   }
   if (P.src) {
-    const k = S.takes.findIndex((t) => t.id === P.src.takeId);
-    if (k >= 0) {
-      const tk = S.takes[k], y0 = RULER + EDIT_H + k * TAKE_H, x = Math.round(px(tk.sync + P.src.s)) + 0.5;
+    const Ln = lanes().find((L) => L.t.id === P.src.takeId);
+    if (Ln) {
+      const tk = Ln.t, y0 = Ln.y, LH = Ln.h, x = Math.round(px(tk.sync + P.src.s)) + 0.5;
       if (P.srcOut != null) {
         const x2 = Math.round(px(tk.sync + P.srcOut)) + 0.5;
-        g.fillStyle = 'rgba(227,174,75,0.13)'; g.fillRect(x, y0 + 2, x2 - x, TAKE_H - 4);
-        g.fillStyle = '#e3ae4b'; g.fillRect(x2 - 1, y0 + 2, 2, TAKE_H - 4);
+        g.fillStyle = 'rgba(227,174,75,0.13)'; g.fillRect(x, y0 + 2, x2 - x, LH - 4);
+        g.fillStyle = '#e3ae4b'; g.fillRect(x2 - 1, y0 + 2, 2, LH - 4);
         flag(x2, y0 + 4, 'B uit');
       }
-      g.fillStyle = '#e3ae4b'; g.fillRect(x - 1, y0 + 2, 2, TAKE_H - 4);
+      g.fillStyle = '#e3ae4b'; g.fillRect(x - 1, y0 + 2, 2, LH - 4);
       flag(x, y0 + 4, P.srcOut != null ? 'B in' : 'B');
     }
   }
@@ -2174,12 +2244,15 @@ function buildHeads() {
   const el = $('heads');
   let html = `<div class="head ruler" style="height:${RULER}px">${S.takes.length ? 'tijd' : ''}</div>`;
   html += `<div class="head edit" style="height:${EDIT_H}px"><strong>Edit</strong><span class="meta">${S.clips.length} clip${S.clips.length === 1 ? '' : 's'} · ${fmt(editEnd(), 1)}</span><canvas id="meter"></canvas></div>`;
-  S.takes.forEach((t) => {
+  lanes().forEach(({ t, h }) => {
     const sel = S.sel && S.sel.kind === 'take' && S.sel.id === t.id;
     const playing = S.playing && S.playing.mode === 'take' && S.playing.takeId === t.id;
-    html += `<div class="head take${sel ? ' sel' : ''}" data-take="${t.id}" style="height:${TAKE_H}px;--c:${t.color}">
-      <div class="name"><span class="sw" style="background:${t.color}"></span><span title="${esc(t.name)}">${esc(t.name)}</span></div>
-      <div class="meta"><button data-solo="${t.id}" title="Speel deze take vanaf de afspeelkop">${playing ? '■ stop' : '▶ solo'}</button><span>${fmt(t.buffer.duration, 1)}</span></div>
+    const [wa, wb] = winOf(t);
+    const fold = `<button class="fold" data-fold="${t.id}" title="${t.collapsed ? 'Uitklappen' : 'Inklappen'} (⌥-klik: alle andere banen ${t.collapsed ? 'inklappen' : 'uitklappen'})" aria-label="${t.collapsed ? 'Uitklappen' : 'Inklappen'}">${t.collapsed ? '▸' : '▾'}</button>`;
+    const x = t.frag ? `<button class="unfrag" data-unfrag="${t.id}" title="Fragment weghalen (de opname en de edit blijven zoals ze zijn)" aria-label="Fragment weghalen">×</button>` : '';
+    html += `<div class="head take${sel ? ' sel' : ''}${t.frag ? ' frag' : ''}${t.collapsed ? ' folded' : ''}" data-take="${t.id}" style="height:${h}px;--c:${t.color}">
+      <div class="name">${fold}<span class="sw" style="background:${t.color}"></span><span title="${esc(t.name)}">${t.frag ? '↳ ' : ''}${esc(headName(t))}</span>${x}</div>
+      ${t.collapsed ? '' : `<div class="meta"><button data-solo="${t.id}" title="Speel ${t.frag ? 'dit fragment' : 'deze take'} vanaf de afspeelkop (↑/↓: naar de baan erboven/eronder)">${playing ? '■ stop' : '▶ solo'}</button><span>${t.frag ? (wb - wa).toFixed(1).replace('.', ',') + ' s' : fmt(t.buffer.duration, 1)}</span></div>`}
     </div>`;
   });
   if (!S.takes.length) html += `<div class="head placeholder" style="height:${TAKE_H}px">Takes</div>`;
@@ -2189,6 +2262,10 @@ function buildHeads() {
 }
 
 $('heads').addEventListener('click', (e) => {
+  const fb = e.target.closest('[data-fold]');
+  if (fb) { toggleFold(takeOf(+fb.dataset.fold), e.altKey); return; }
+  const ub = e.target.closest('[data-unfrag]');
+  if (ub) { removeFrag(takeOf(+ub.dataset.unfrag)); return; }
   const solo = e.target.closest('[data-solo]');
   if (solo) {
     const t = takeOf(+solo.dataset.solo);
@@ -2307,6 +2384,7 @@ function renderInspector() {
       <span><kbd>Spatie</kbd> afspelen of stoppen · <kbd>L</kbd> stuk herhalen</span>
       <span><kbd>D</kbd> doel op de noot · <kbd>H</kbd> takes hier uitlijnen · <kbd>E</kbd> overnemen</span>
       <span><kbd>A</kbd> crossfade beluisteren · <kbd>G</kbd> galmstaart</span>
+      <span><kbd>↑</kbd> <kbd>↓</kbd> naar een andere baan, ook tijdens het afspelen · <kbd>⌘C</kbd> <kbd>⌘V</kbd> fragment</span>
       <span><kbd>R</kbd> bijgeluiden repareren · <kbd>X</kbd> vergelijken met origineel</span>
       <span><kbd>S</kbd> knippen · <kbd>M</kbd> marker · <kbd>Delete</kbd> verwijderen</span>
       <span><kbd>⌘Z</kbd> ongedaan maken · <kbd>+</kbd> <kbd>−</kbd> <kbd>F</kbd> zoomen</span>
@@ -2533,13 +2611,15 @@ function inspectTake(el, t) {
   const r = S.range && S.range.takeId === t.id ? S.range : null;
   const others = S.takes.filter((x) => x !== t);
   const ra = r && Math.min(r.t0, r.t1), rb = r && Math.max(r.t0, r.t1);
+  if (t.frag) return inspectFrag(el, t);
   el.innerHTML = `
     <div class="insp-head"><h2>Take</h2><span>${t.buffer.numberOfChannels === 1 ? 'mono' : t.buffer.numberOfChannels === 2 ? 'stereo' : t.buffer.numberOfChannels + ' kanalen'} · ${t.srcRate && t.srcRate !== t.buffer.sampleRate ? `bestand ${khz(t.srcRate)}, omgerekend naar ${khz(t.buffer.sampleRate)}` : khz(t.buffer.sampleRate)} · ${fmt(t.buffer.duration)}</span></div>
     ${r ? `<div class="row">
       <b>Selectie ${fmt(ra)} – ${fmt(rb)} (${(rb - ra).toFixed(2)} s)</b>
       <button id="tkComp" class="primary">Naar edit <kbd>E</kbd></button>
       <button id="tkPlayR">▶ Beluister selectie</button>
-    </div>` : `<p class="hint">Sleep in deze take-baan om een stuk te selecteren dat je in de edit wilt plaatsen.</p>`}
+      <button id="tkCopy" title="Kopieer dit stuk als fragment; zet de afspeelkop op de plek in de edit en plak met ⌘V. Er wordt geen audio gekopieerd.">Kopieer als fragment <kbd>⌘C</kbd></button>
+    </div>` : `<p class="hint">Sleep in deze take-baan om een stuk te selecteren. Dat kun je in de edit plaatsen (<kbd>E</kbd>) of als fragment onder elkaar leggen om uitvoeringen te vergelijken (<kbd>⌘C</kbd>, dan <kbd>⌘V</kbd>).</p>`}
     <div class="row">
       <label>Naam <input type="text" id="tkName" value="${esc(t.name)}"></label>
       <label title="Positie van het begin van deze take op de tijdlijn">Sync <input type="number" id="tkSync" step="1" value="${ms(t.sync)}"> ms</label>
@@ -2556,6 +2636,7 @@ function inspectTake(el, t) {
   if (r) {
     $('tkComp').onclick = compRange;
     $('tkPlayR').onclick = () => playRange(t, ra, rb);
+    $('tkCopy').onclick = copyRange;
   }
   $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); scheduleSave(); };
   $('tkSync').onchange = (e) => mutate(() => { setTakeSync(t, (+e.target.value || 0) / 1000); });
@@ -2631,9 +2712,10 @@ function clearPoints() { S.pts = { dest: null, destOut: null, src: null, srcOut:
 /** Mono-signaal van een take over [s0,s1] in de bron (buiten de take: stilte). */
 function takeMono(take, s0, s1, sr) {
   const n = Math.max(1, Math.round((s1 - s0) * sr)), out = new Float32Array(n), d = take.data, tsr = take.buffer.sampleRate, len = d[0].length;
+  const [wa, wb] = winOf(take), ia = Math.round(wa * tsr), ib = Math.round(wb * tsr);   // een fragment: alleen zijn eigen stuk telt
   for (let k = 0; k < n; k++) {
     const i = Math.round((s0 + k / sr) * tsr);
-    if (i < 0 || i >= len) continue;
+    if (i < 0 || i >= len || i < ia || i >= ib) continue;
     let v = 0; for (const ch of d) v += ch[i]; out[k] = v / d.length;
   }
   return out;
@@ -3395,7 +3477,7 @@ function removeRepair(take, id) {
 function setBypass(on, quiet) {
   if (!!S.bypass === !!on) return;
   S.bypass = !!on;
-  for (const t of S.takes) if ((t.repairs || []).some((r) => r.on)) applyRepairs(t);
+  for (const t of realTakes()) if ((t.repairs || []).some((r) => r.on)) applyRepairs(t);
   S.dirty = true;
   if (quiet) return;
   const p = S.playing;
@@ -4012,9 +4094,8 @@ function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - 
 function laneAt(y) {
   if (y < RULER) return { kind: 'ruler' };
   if (y < RULER + EDIT_H) return { kind: 'edit' };
-  const k = Math.floor((y - RULER - EDIT_H) / TAKE_H);
-  const t = S.takes[k];
-  return t ? { kind: 'take', take: t } : { kind: 'none' };
+  const L = lanes().find((l) => y >= l.y && y < l.y + l.h);
+  return L ? { kind: 'take', take: L.t, y: L.y, h: L.h } : { kind: 'none' };
 }
 function hitEdit(x, y) {
   if (y != null && y >= RULER + EDIT_H - 6 - TAIL_H) {            // eind van een galmstaart (strook onderin)
@@ -4088,7 +4169,9 @@ cv.addEventListener('pointerdown', (e) => {
     }
   } else if (lane.kind === 'take') {
     d.take = lane.take;
-    if (e.altKey) { d.type = 'sync'; d.os = lane.take.sync; }
+    const fe = fragEdgeAt(lane, x);
+    if (fe != null) { d.type = 'fwin'; d.edge = fe; d.ow = [...lane.take.win]; }
+    else if (e.altKey) { d.type = 'sync'; d.os = lane.take.sync; }
     else d.type = 'range';
     if (!(S.sel && S.sel.kind === 'take' && S.sel.id === lane.take.id)) select({ kind: 'take', id: lane.take.id });
   }
@@ -4101,11 +4184,11 @@ cv.addEventListener('pointermove', (e) => {
   if (!d || d.xf) { hoverCursor(x, y, e.altKey); return; }
   const dx = x - d.x0;
   // clips en crossfades pas verslepen na 6 px, zodat een klik met een kleine trilling niets verschuift
-  const thr = ['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker', 'tail'].includes(d.type) ? 6 : 3;
+  const thr = ['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker', 'tail', 'fwin'].includes(d.type) ? 6 : 3;
   if (!d.moved && Math.abs(dx) < thr) return;
   if (!d.moved) {
     d.moved = true;
-    if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker', 'tail'].includes(d.type)) pushUndo();
+    if (['move', 'moveGroup', 'slip', 'trimL', 'trimR', 'roll', 'xflen', 'sync', 'marker', 'tail', 'fwin'].includes(d.type)) pushUndo();
     if (d.type === 'move' && d.metaClick) select({ kind: 'clip', id: d.c.id });
   }
   const dt = dx / S.pps, sh = e.shiftKey;
@@ -4180,9 +4263,16 @@ cv.addEventListener('pointermove', (e) => {
     case 'tail':
       if (d.a.tail) d.a.tail.len = Math.round(clamp(tAt(x) - end(d.a), TAIL_MIN, Math.max(TAIL_MIN, d.max)) * 100) / 100;
       break;
+    case 'fwin': {
+      const tk = d.take, v = tAt(x) - tk.sync, dur = tk.buffer.duration;
+      if (d.edge === 0) tk.win[0] = clamp(v, 0, d.ow[1] - 0.2);
+      else tk.win[1] = clamp(v, d.ow[0] + 0.2, dur);
+      buildHeads();
+      break;
+    }
     case 'range': {
-      const tk = d.take;
-      const lo = tk.sync, hi = tk.sync + tk.buffer.duration;
+      const tk = d.take, [wa, wb] = winOf(tk);
+      const lo = tk.sync + wa, hi = tk.sync + wb;
       S.range = { takeId: tk.id, t0: clamp(d.t0, lo, hi), t1: clamp(tAt(x), lo, hi) };
       break;
     }
@@ -4245,6 +4335,8 @@ function endDrag(e) {
     afterEdit();
   } else if (d.type === 'playhead') {
     if (S.playing) restartAtPlayhead();
+  } else if (d.type === 'fwin') {
+    afterEdit();
   } else {
     if (d.type === 'move') resolveDrop(d.c, !!(e && (e.metaKey || e.ctrlKey)));
     if (d.type === 'moveGroup') { resolveGroupDrop(d.ids); selectClips(d.ids); }
@@ -4299,7 +4391,7 @@ function hoverCursor(x, y, alt) {
     const h = hitEdit(x, y);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
     else cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
-  } else if (lane.kind === 'take') cur = alt ? 'ew-resize' : 'text';
+  } else if (lane.kind === 'take') cur = alt || fragEdgeAt(lane, x) != null ? 'ew-resize' : 'text';
   cv.style.cursor = cur;
 }
 
@@ -4338,7 +4430,7 @@ function zoomAt(x, f) {
 }
 /** Linkergrens van het beeld: 0:00, of eerder als een take vóór 0:00 begint. */
 function viewMin() {
-  const m = Math.min(0, ...S.takes.map((t) => t.sync));
+  const m = Math.min(0, ...S.takes.map((t) => t.sync + winOf(t)[0]));
   return m < 0 ? m - 1 : 0;
 }
 function zoomFit() {
@@ -4404,6 +4496,8 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
+  if (mod && !e.shiftKey && k.toLowerCase() === 'c') { if (S.range) { e.preventDefault(); copyRange(); } return; }
+  if (mod && !e.shiftKey && k.toLowerCase() === 'v') { e.preventDefault(); pasteFrag(); return; }
   if (k === ' ') { e.preventDefault(); if (e.target.blur) e.target.blur(); togglePlay(); return; }
   if (mod && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && k.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
@@ -4434,6 +4528,7 @@ document.addEventListener('keydown', (e) => {
     case 'Home': S.playhead = 0; S.view = 0; S.dirty = true; updateScroll(); if (S.playing) restartAtPlayhead(); break;
     case 'End': S.playhead = editEnd(); break;
     case 'Escape': S.pick = null; S.range = null; clearPoints(); select(null); break;
+    case 'ArrowUp': case 'ArrowDown': e.preventDefault(); stepLane(k === 'ArrowUp' ? -1 : 1); break;
     case 'ArrowLeft': case 'ArrowRight': {
       e.preventDefault();
       const dir = k === 'ArrowLeft' ? -1 : 1;
@@ -4606,7 +4701,7 @@ async function saveProject() {
         updateProjectLine();
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
       }
-      for (const t of S.takes) {
+      for (const t of realTakes()) {
         if (t.stored) continue;
         setSaveState(`audio van "${t.name}" bewaren…`);
         await dbPut('files', t.file || withOriginal(t, () => encodeWav(t.buffer, 32)), t.fileKey);
@@ -4616,7 +4711,8 @@ async function saveProject() {
       await dbPut('projects', {
         id: p.id, name: p.name, created: p.created, updated: Date.now(),
         sr: S.ac ? S.ac.sampleRate : null,
-        takes: S.takes.map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration, srcRate: t.srcRate || null, repairs: t.repairs || [] })),
+        takes: realTakes().map((t) => ({ id: t.id, name: t.name, fileKey: t.fileKey, sync: t.sync, color: t.color, dur: t.buffer.duration, srcRate: t.srcRate || null, repairs: t.repairs || [], collapsed: !!t.collapsed })),
+        frags: S.takes.filter((t) => t.frag).map(fragRec), order: S.takes.map((t) => t.id),
         clips: S.clips.map((c) => ({ ...c })), markers: S.markers, nextId: S.nextId,
         view: { pps: S.pps, view: S.view, playhead: S.playhead }, length: editEnd(),
       });
@@ -4703,7 +4799,7 @@ function resetWorkspace() {
   stop();
   S.takes = []; S.clips = []; S.markers = []; S.undo = []; S.redo = [];
   S.pts = { dest: null, destOut: null, src: null, srcOut: null };
-  S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0; S.bypass = false; S.repCache = null;
+  S.sel = null; S.range = null; S.project = null; S.playhead = 0; S.view = 0; S.bypass = false; S.repCache = null; S.fragClip = null;
   updateProjectLine(); setSaveState('wordt automatisch bewaard');
   buildHeads(); S.loading = true; afterEdit(); S.loading = false;
 }
@@ -4737,17 +4833,20 @@ async function loadProject(id) {
       const buf = await decodeAudio(ac, await (blob.arrayBuffer ? blob.arrayBuffer() : new Response(blob).arrayBuffer()));
       const data = [];
       for (let ch = 0; ch < buf.numberOfChannels; ch++) data.push(buf.getChannelData(ch));
-      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: OLD_COLORS.includes(tk.color) ? COLORS[OLD_COLORS.indexOf(tk.color)] : tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true, repairs: tk.repairs || [], stash: [] });
+      takes.push({ srcRate: tk.srcRate || null, id: tk.id, name: tk.name, sync: tk.sync, color: OLD_COLORS.includes(tk.color) ? COLORS[OLD_COLORS.indexOf(tk.color)] : tk.color, fileKey: tk.fileKey, buffer: buf, data, peaks: computePeaks(buf), file: null, stored: true, repairs: tk.repairs || [], stash: [], collapsed: !!tk.collapsed });
     }
     S.bypass = false;
-    for (const t of takes) if (t.repairs.some((r) => r.on)) { busy(true, `Reparaties toepassen: ${t.name}…`); applyRepairs(t); }
+    for (const t of takes) if (!t.frag && t.repairs.some((r) => r.on)) { busy(true, `Reparaties toepassen: ${t.name}…`); applyRepairs(t); }
+    for (const f of rec.frags || []) { const par = takes.find((t) => t.id === f.parent); if (par) takes.push(makeFrag(par, f)); }
+    const at = new Map((rec.order || []).map((id, i) => [id, i]));
+    if (at.size) takes.sort((a, b) => (at.has(a.id) ? at.get(a.id) : 1e9) - (at.has(b.id) ? at.get(b.id) : 1e9));
     S.takes = takes;
     S.clips = rec.clips.filter((c) => takes.some((t) => t.id === c.takeId));
     S.markers = rec.markers || [];
     S.pts = { dest: null, destOut: null, src: null, srcOut: null };
     S.nextId = Math.max(rec.nextId || 1, ...takes.map((t) => t.id + 1), ...S.clips.map((c) => c.id + 1));
     S.project = { id: rec.id, name: rec.name, created: rec.created };
-    S.undo = []; S.redo = []; S.sel = null; S.range = null;
+    S.undo = []; S.redo = []; S.sel = null; S.range = null; S.fragClip = null;
     if (rec.view) { S.pps = rec.view.pps; S.view = rec.view.view; S.playhead = rec.view.playhead; }
     store.set('last', rec.id);
     updateProjectLine();
@@ -4945,6 +5044,141 @@ $('keysDlg').addEventListener('click', (e) => { if (e.target === $('keysDlg')) $
 // zodra de letter geladen is, de tijdlijn opnieuw tekenen
 if (document.fonts && document.fonts.load) document.fonts.load('12px "Atkinson Hyperlegible Next"').then(() => { S.dirty = true; }).catch(() => {});
 welcomeArt();
+
+/* ---------- fragmenten: kopiëren, plakken, weghalen; in- en uitklappen; schakelen ---------- */
+/** Raakt x de rand van een fragment in deze baan? 0 = begin, 1 = eind, null = nee. */
+function fragEdgeAt(lane, x) {
+  const t = lane.take;
+  if (!t || !t.frag || t.collapsed) return null;
+  if (Math.abs(x - px(t.sync + t.win[0])) <= 6) return 0;
+  if (Math.abs(x - px(t.sync + t.win[1])) <= 6) return 1;
+  return null;
+}
+/** ⌘C: het geselecteerde stuk van een take (of fragment) onthouden als fragment om te plakken. */
+function copyRange() {
+  const r = S.range; if (!r) { toast('Selecteer eerst een stuk in een takebaan: sleep erover'); return; }
+  const t = takeOf(r.takeId), root = rootOf(t);
+  const a = Math.min(r.t0, r.t1) - t.sync, b = Math.max(r.t0, r.t1) - t.sync;
+  if (b - a < 0.2) { toast('Selecteer een stuk van minstens 0,2 s'); return; }
+  S.fragClip = { takeId: root.id, a, b };
+  toast(`Gekopieerd: ${fmt(a, 1)} – ${fmt(b, 1)} uit "${root.name}". Zet de afspeelkop in de edit op de plek waar dit stuk hoort en druk ⌘V.`);
+}
+/** ⌘V: het gekopieerde stuk als fragment onder zijn opname, uitgelijnd op de edit rond de afspeelkop. */
+function pasteFrag() {
+  const c = S.fragClip;
+  const root = c && takeOf(c.takeId);
+  if (!root) { toast('Kopieer eerst een stuk uit een take: sleep erover en druk ⌘C'); return; }
+  const nm = `${root.name} · ${fmt(c.a, 0)}`;
+  let name = nm, i = 2;
+  while (S.takes.some((t) => t.name === name)) name = `${nm} (${i++})`;
+  const f = makeFrag(root, { id: newId(), name, win: [c.a, c.b], sync: S.playhead - c.a, color: tint(root.color) });
+  // uitlijnen op wat de edit rond de afspeelkop laat horen (alleen binnen het fragment zoeken)
+  let found = false;
+  if (S.clips.length) {
+    const ft = editFeatures(S.playhead + Math.min(AL_W, (c.b - c.a) / 2));
+    const ns = ft ? matchTake(ft, f) : null;
+    if (ns != null) { f.sync = ns; found = true; }
+  }
+  mutate(() => {
+    let at = S.takes.indexOf(root);
+    while (at + 1 < S.takes.length && S.takes[at + 1].parent === root.id) at++;
+    S.takes.splice(at + 1, 0, f);
+    S.range = null;
+    S.sel = { kind: 'take', id: f.id };
+  });
+  buildHeads(); revealLane(f);
+  toast(found ? `Fragment "${name}" staat onder de opname, uitgelijnd op de edit. ↑/↓ wisselt tussen de banen, ook tijdens het afspelen.`
+    : `Fragment "${name}" staat op de afspeelkop. Lijn het uit met H, of schuif het met ⌥-slepen.`);
+}
+/** Fragment weghalen: clips eruit gaan over naar de opname (zelfde bron-tijden), dus de edit klinkt hetzelfde. */
+function removeFrag(t) {
+  if (!t || !t.frag) return;
+  if (S.playing && S.playing.mode === 'take' && S.playing.takeId === t.id) stop();
+  mutate(() => {
+    for (const c of S.clips) if (c.takeId === t.id) c.takeId = t.parent;
+    for (const c of S.clips) if (c.tail && c.tail.donor && c.tail.donor.takeId === t.id) c.tail.donor.takeId = t.parent;
+    if (S.pts.src && S.pts.src.takeId === t.id) S.pts.src.takeId = t.parent;
+    S.takes = S.takes.filter((x) => x !== t);
+    if (S.range && S.range.takeId === t.id) S.range = null;
+    if (S.sel && S.sel.kind === 'take' && S.sel.id === t.id) S.sel = null;
+  });
+  buildHeads();
+  toast(`Fragment "${t.name}" weggehaald. De opname en de edit zijn niet veranderd. ⌘Z zet het terug.`);
+}
+/** Baan in- of uitklappen; met ⌥ alle andere banen de andere kant op. */
+function toggleFold(t, others) {
+  if (!t) return;
+  if (others) { const v = !t.collapsed; for (const x of S.takes) if (x !== t) x.collapsed = v; t.collapsed = false; }
+  else t.collapsed = !t.collapsed;
+  buildHeads(); S.dirty = true; scheduleSave();
+}
+/** Zorg dat de baan in beeld is (de tijdlijn scrolt verticaal). */
+function revealLane(t) {
+  const L = laneOf(t), tl = $('timeline'); if (!L || !tl) return;
+  if (L.y < tl.scrollTop + RULER + EDIT_H) tl.scrollTop = Math.max(0, L.y - RULER - EDIT_H);
+  else if (L.y + L.h > tl.scrollTop + tl.clientHeight) tl.scrollTop = L.y + L.h - tl.clientHeight;
+}
+/** ↑/↓: naar de baan erboven of eronder (de edit is de bovenste). Tijdens het afspelen hoor je meteen díe baan, op dezelfde plek. */
+function stepLane(dir) {
+  const list = [null, ...S.takes.filter((t) => !t.collapsed)];
+  const p = S.playing;
+  const cur = p && p.mode === 'take' ? takeOf(p.takeId) : p && p.mode === 'edit' ? null : S.sel && S.sel.kind === 'take' ? takeOf(S.sel.id) : null;
+  let i = list.indexOf(cur); if (i < 0) i = 0;
+  const j = clamp(i + dir, 0, list.length - 1);
+  if (j === i) return;
+  const nt = list[j];
+  if (p && (p.mode === 'edit' || p.mode === 'take')) {
+    const at = S.playhead;
+    if (!nt) play(at, null, null, true);
+    else {
+      const [wa, wb] = winOf(nt);
+      if (at < nt.sync + wa || at >= nt.sync + wb - 0.01) toast(`"${nt.name}" klinkt hier niet; het speelt vanaf zijn begin`);
+      playTake(nt, at, true);
+    }
+  }
+  S.range = null;
+  select(nt ? { kind: 'take', id: nt.id } : null);
+  if (nt) revealLane(nt); else $('timeline').scrollTop = 0;
+}
+function inspectFrag(el, t) {
+  const root = takeOf(t.parent), r = S.range && S.range.takeId === t.id ? S.range : null;
+  const ra = r && Math.min(r.t0, r.t1), rb = r && Math.max(r.t0, r.t1);
+  el.innerHTML = `
+    <div class="insp-head"><h2>Fragment</h2><span>uit "${esc(root.name)}", ${fmt(t.win[0], 2)} – ${fmt(t.win[1], 2)} (${(t.win[1] - t.win[0]).toFixed(1)} s) · verwijst naar de opname, er is niets gekopieerd</span></div>
+    ${r ? `<div class="row">
+      <b>Selectie ${fmt(ra)} – ${fmt(rb)} (${(rb - ra).toFixed(2)} s)</b>
+      <button id="tkComp" class="primary">Naar edit <kbd>E</kbd></button>
+      <button id="tkPlayR">▶ Beluister selectie</button>
+      <button id="tkCopy">Kopieer als fragment <kbd>⌘C</kbd></button>
+    </div>` : `<p class="hint">Dit fragment werkt als een take: solo, ↑/↓, <kbd>H</kbd>, <kbd>B</kbd> en <kbd>E</kbd>. Sleep de randen om het groter of kleiner te maken. Reparaties gelden voor de hele opname.</p>`}
+    <div class="row">
+      <label>Naam <input type="text" id="tkName" value="${esc(t.name)}"></label>
+      <label title="Positie van het begin van de opname op de tijdlijn, voor dit fragment">Sync <input type="number" id="tkSync" step="1" value="${ms(t.sync)}"> ms</label>
+      <button id="frAlign" title="Lijn dit fragment uit op de edit rond de afspeelkop (zoals H, alleen voor dit fragment)">Hier uitlijnen</button>
+    </div>
+    <div class="row">
+      <button id="tkSolo">▶ Solo vanaf afspeelkop</button>
+      <button id="frEdit" title="Plaats dit fragment op deze plek in de edit, met crossfades">Fragment naar edit</button>
+      <button id="tkAlignWin">Uitlijnvenster…</button>
+      <button id="tkRepair">Bijgeluiden repareren… <kbd>R</kbd></button>
+      <button id="frDel">Fragment weghalen</button>
+      <span class="hint">⌥-sleep de baan om het fragment handmatig te verschuiven.</span>
+    </div>`;
+  if (r) { $('tkComp').onclick = compRange; $('tkPlayR').onclick = () => playRange(t, ra, rb); $('tkCopy').onclick = copyRange; }
+  $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); scheduleSave(); };
+  $('tkSync').onchange = (e) => mutate(() => { setTakeSync(t, (+e.target.value || 0) / 1000); });
+  $('frAlign').onclick = () => {
+    const ft = editFeatures(S.playhead), ns = ft ? matchTake(ft, t) : null;
+    if (ns == null) { toast('Niet gevonden rond de afspeelkop. Zet de afspeelkop op de passage, of schuif met ⌥-slepen.'); return; }
+    mutate(() => { t.sync = ns; });
+    toast(`"${t.name}" uitgelijnd op de edit rond ${fmt(S.playhead, 1)}`);
+  };
+  $('tkSolo').onclick = () => playTake(t, S.playhead);
+  $('frEdit').onclick = () => replaceRange(t, t.sync + t.win[0], t.sync + t.win[1]);
+  $('tkAlignWin').onclick = openAlign;
+  $('tkRepair').onclick = openRepair;
+  $('frDel').onclick = () => removeFrag(t);
+}
 
 /* ---------- project sluiten ---------- */
 function placeUnder(pop, btn, alignLeft) {
