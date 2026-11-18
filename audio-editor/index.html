@@ -353,6 +353,7 @@ body.empty #welcome { display: block; }
     <label class="opt"><input type="checkbox" id="snapChk" checked> Snap<small>Clips klikken bij slepen vast aan randen en de afspeelkop. ⇧ tijdens slepen zet het tijdelijk uit.</small></label>
     <label class="opt"><input type="checkbox" id="zcChk" checked> Nuldoorgang<small>Knippen en weghalen schuiven tot 5 ms op naar een nuldoorgang: geen tikjes.</small></label>
     <label class="opt num">Standaard-crossfade <span><input type="number" id="defXf" value="40" min="0" max="5000" step="5"> ms</span><small>Voor nieuwe wissels. 30–60 ms meestal; 10–30 ms voor één noot.</small></label>
+    <label class="opt num">Crossfade bij korte knip <span><input type="number" id="shortXf" value="8" min="0" max="100" step="1"> ms</span><small>Voor het weghalen van een stukje korter dan 150 ms, zoals een rafelige aanzet. 5–10 ms hoor je vlak voor een inzet niet.</small></label>
   </div>
 </header>
 
@@ -491,7 +492,7 @@ const S = {
   undo: [], redo: [],
   tool: 'move',
   markers: [], dither: 'auto', exportRate: 'project', exportFmt: 'wav24', normalize: false, normDb: -1,
-  zeroCross: true, snap: true, defXf: 0.04, preroll: 2, loopAudition: false, syncClips: false, returnToStart: true,
+  zeroCross: true, snap: true, defXf: 0.04, shortXf: 0.008, preroll: 2, loopAudition: false, syncClips: false, returnToStart: true,
   project: null, loading: false,
   drag: null, dirty: true, xfView: null,
   meter: 0,
@@ -1040,6 +1041,10 @@ function gapAt(t) {
   return { a, b: next.start, next };
 }
 
+/** Lengte voor de crossfade op de naad na weghalen: een korte knip (rafelige aanzet) krijgt een korte crossfade. */
+const SHORT_CUT = 0.15;
+function seamXf(len) { return len < SHORT_CUT ? Math.min(S.defXf, S.shortXf) : S.defXf; }
+
 /**
  * Haal [t0,t1] uit de edit.
  * ripple = true: alles erna schuift aan en de naad krijgt een standaard-crossfade.
@@ -1049,6 +1054,7 @@ function deleteRange(t0, t1, ripple = true) {
   if (t1 - t0 < 0.005) return;
   t0 = zeroCrossAt(clipAt(t0), t0); t1 = zeroCrossAt(clipAt(t1), t1);
   const d = ripple ? t1 - t0 : 0;
+  const xf = seamXf(t1 - t0);
   mutate(() => {
     const out = [];
     for (const c of S.clips) {
@@ -1063,13 +1069,13 @@ function deleteRange(t0, t1, ripple = true) {
       S.markers = S.markers.filter((mk) => mk.t < t0 || mk.t >= t1).map((mk) => (mk.t >= t1 ? { ...mk, t: mk.t - d } : mk));
       for (let i = 1; i < S.clips.length; i++) {
         const a = S.clips[i - 1], b = S.clips[i];
-        if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, S.defXf);
+        if (Math.abs(b.start - t0) < 1e-6 && Math.abs(end(a) - b.start) < 1e-6) setXfLen(a, b, xf);
       }
     }
     S.sel = null;
     S.playhead = Math.max(0, t0 - 1);
   });
-  toast(ripple ? `${fmt(t1 - t0, 2)} weggehaald; de rest is aangeschoven` : `${fmt(t1 - t0, 2)} weggehaald; er is stilte voor in de plaats gekomen`);
+  toast(ripple ? `${fmt(t1 - t0, 2)} weggehaald; de rest is aangeschoven${xf !== S.defXf ? ` (korte knip: crossfade ${ms(xf)} ms)` : ''}` : `${fmt(t1 - t0, 2)} weggehaald; er is stilte voor in de plaats gekomen`);
 }
 
 /** Schuif clip c en alles erna naar links, tot tegen de vorige clip (of 0:00). */
@@ -2332,7 +2338,7 @@ function renderInspector() {
         <button id="erPreview">▶ Beluister zonder dit stuk</button>
         <button id="erRepair" title="Een bijgeluid in dit stuk wegwerken, in het spectrogram">Bijgeluid repareren… <kbd>R</kbd></button>
         <button id="erLoop" title="Speelt de selectie steeds opnieuw; bewerken tijdens het herhalen kan gewoon (L)">${S.playing && S.playing.loop ? '■ Stop herhalen' : '🔁 Herhaal selectie'} <kbd>L</kbd></button>
-        <span class="hint"><b>Aanschuiven</b>: de edit wordt korter en de naad krijgt een crossfade van ${ms(S.defXf)} ms. <b>Gat laten</b>: er komt stilte voor in de plaats, met korte fades aan de randen. Ongedaan maken met ⌘Z.</span>
+        <span class="hint"><b>Aanschuiven</b>: de edit wordt korter en de naad krijgt een crossfade van ${ms(seamXf(b - a))} ms${b - a < SHORT_CUT && S.shortXf < S.defXf ? ' (korte knip)' : ''}. <b>Gat laten</b>: er komt stilte voor in de plaats, met korte fades aan de randen. Ongedaan maken met ⌘Z.</span>
       </div>`;
     $('erDel').onclick = () => deleteRange(a, b, true);
     $('erGap').onclick = () => deleteRange(a, b, false);
@@ -4482,6 +4488,7 @@ $('zcChk').onchange = (e) => { S.zeroCross = e.target.checked; saveSettings(); }
 $('projBtn').onclick = openProjects;
 
 $('defXf').onchange = (e) => { S.defXf = clamp(+e.target.value || 0, 0, 5000) / 1000; saveSettings(); };
+$('shortXf').onchange = (e) => { S.shortXf = clamp(+e.target.value || 0, 0, 100) / 1000; saveSettings(); renderInspector(); };
 $('exportBtn').onclick = () => select({ kind: 'export' });
 $('projFileInput').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importProjectFile(f); };
 
@@ -4919,7 +4926,7 @@ window.addEventListener('pagehide', () => { if (saveTimer) saveProject(); });
 
 /* instellingen (per apparaat) */
 function saveSettings() {
-  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb, tail: S.tailDef, repAmt: S.repAmt, repSens: S.repSens, repBright: S.repBright }));
+  store.set('settings', JSON.stringify({ tool: S.tool, zc: S.zeroCross, snap: S.snap, defXf: S.defXf, shortXf: S.shortXf, rts: S.returnToStart, sc2: S.syncClips, preroll: S.preroll, dither: S.dither, rate: S.exportRate, fmt: S.exportFmt, norm: S.normalize, normDb: S.normDb, tail: S.tailDef, repAmt: S.repAmt, repSens: S.repSens, repBright: S.repBright }));
 }
 function loadSettings() {
   let o = null; try { o = JSON.parse(store.get('settings') || 'null'); } catch (_) { o = null; }
@@ -4928,6 +4935,7 @@ function loadSettings() {
   if (['move', 'select', 'hand'].includes(o.tool)) S.tool = o.tool;
   if (typeof o.zc === 'boolean') S.zeroCross = o.zc;
   if (typeof o.defXf === 'number') S.defXf = o.defXf;
+  if (typeof o.shortXf === 'number') S.shortXf = o.shortXf;
   if (typeof o.rts === 'boolean') S.returnToStart = o.rts;
   if (typeof o.sc2 === 'boolean') S.syncClips = o.sc2;
   if (typeof o.preroll === 'number') S.preroll = o.preroll;
@@ -4943,7 +4951,7 @@ function loadSettings() {
 }
 function applySettingsUI() {
   setTool(S.tool, true);
-  $('snapChk').checked = S.snap; $('zcChk').checked = S.zeroCross; $('defXf').value = ms(S.defXf); $('rtsChk').checked = S.returnToStart;
+  $('snapChk').checked = S.snap; $('zcChk').checked = S.zeroCross; $('defXf').value = ms(S.defXf); $('shortXf').value = ms(S.shortXf); $('rtsChk').checked = S.returnToStart;
 }
 
 /* ---------- app: offline + installeren ---------- */
