@@ -4139,6 +4139,10 @@ cv.addEventListener('pointerdown', (e) => {
     if (lane.kind === 'edit') d.hit = hitEdit(x);
   }
   else if (S.pick && lane.kind === 'take') { d.type = 'range'; d.take = lane.take; }   // donor-galm aanwijzen: de overgang blijft geselecteerd
+  else if (S.tool === 'hand' && lane.kind === 'take' && lane.take.frag && x > px(lane.take.sync + lane.take.win[0]) && x < px(lane.take.sync + lane.take.win[1])) {   // hand op een fragment: het fragment verschuiven
+    d.take = lane.take; d.type = 'sync'; d.os = lane.take.sync; d.fragMove = true;
+    if (!(S.sel && S.sel.kind === 'take' && S.sel.id === lane.take.id)) select({ kind: 'take', id: lane.take.id });
+  }
   else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) {   // hand: slepen schuift altijd het beeld
     d.type = 'pan'; d.view0 = S.view;
     if (lane.kind === 'edit') d.hit = hitEdit(x); else d.take = lane.take;
@@ -4171,7 +4175,7 @@ cv.addEventListener('pointerdown', (e) => {
     d.take = lane.take;
     const fe = fragEdgeAt(lane, x);
     if (fe != null) { d.type = 'fwin'; d.edge = fe; d.ow = [...lane.take.win]; }
-    else if (e.altKey) { d.type = 'sync'; d.os = lane.take.sync; }
+    else if (e.altKey || inFragBody(lane, x)) { d.type = 'sync'; d.os = lane.take.sync; d.fragMove = !e.altKey; }
     else d.type = 'range';
     if (!(S.sel && S.sel.kind === 'take' && S.sel.id === lane.take.id)) select({ kind: 'take', id: lane.take.id });
   }
@@ -4323,7 +4327,7 @@ function endDrag(e) {
   if (!d.moved && d.metaClick) { toggleInSelection(d.c); S.dirty = true; return; }
   if (!d.moved) {
     if (['move', 'moveGroup', 'slip', 'trimL', 'trimR'].includes(d.type)) S.playhead = Math.max(0, d.t0);
-    if (d.type === 'range') S.playhead = d.t0;   // in een take-baan mag dat ook vóór 0:00 zijn
+    if (d.type === 'range' || (d.type === 'sync' && d.fragMove)) S.playhead = d.t0;   // in een take-baan mag dat ook vóór 0:00 zijn
     if (d.type === 'range') { S.range = null; if (!S.pick) renderInspector(); updateButtons(); }
     if (S.playing && d.type !== 'roll' && d.type !== 'xflen' && d.type !== 'tail') restartAtPlayhead();
   } else if (d.type === 'range') {
@@ -4385,13 +4389,13 @@ function hoverCursor(x, y, alt) {
   if (S.pick && lane.kind === 'take') cur = 'crosshair';
   else if (lane.kind === 'ruler' && S.markers.some((m) => Math.abs(px(m.t) - x) < 7)) cur = 'ew-resize';
   else if (lane.kind === 'ruler' || (lane.kind === 'edit' && S.shiftDown)) cur = 'text';
-  else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
+  else if (S.tool === 'hand' && (lane.kind === 'edit' || lane.kind === 'take')) cur = S.drag && (S.drag.type === 'pan' || S.drag.type === 'sync') ? 'grabbing' : 'grab';
   else if (S.tool === 'select' && lane.kind === 'edit') cur = 'default';
   else if (lane.kind === 'edit') {
     const h = hitEdit(x, y);
     if (h) cur = h.type === 'junction' ? (alt ? 'ew-resize' : 'col-resize') : h.type === 'body' ? (alt ? 'ew-resize' : 'move') : 'ew-resize';
     else cur = S.drag && S.drag.type === 'pan' ? 'grabbing' : 'grab';
-  } else if (lane.kind === 'take') cur = alt || fragEdgeAt(lane, x) != null ? 'ew-resize' : 'text';
+  } else if (lane.kind === 'take') cur = alt || fragEdgeAt(lane, x) != null ? 'ew-resize' : inFragBody(lane, x) ? (S.drag && S.drag.type === 'sync' ? 'grabbing' : 'grab') : 'text';
   cv.style.cursor = cur;
 }
 
@@ -5054,6 +5058,11 @@ function fragEdgeAt(lane, x) {
   if (Math.abs(x - px(t.sync + t.win[1])) <= 6) return 1;
   return null;
 }
+/** Met het verplaatsgereedschap (✥) pak je een fragment op en schuif je het; met selecteren (↖) sleep je een selectie erin. */
+function inFragBody(lane, x) {
+  const t = lane.take;
+  return !!(t && t.frag && S.tool === 'move' && x > px(t.sync + t.win[0]) && x < px(t.sync + t.win[1]));
+}
 /** ⌘C: het geselecteerde stuk van een take (of fragment) onthouden als fragment om te plakken. */
 function copyRange() {
   const r = S.range; if (!r) { toast('Selecteer eerst een stuk in een takebaan: sleep erover'); return; }
@@ -5150,7 +5159,7 @@ function inspectFrag(el, t) {
       <button id="tkComp" class="primary">Naar edit <kbd>E</kbd></button>
       <button id="tkPlayR">▶ Beluister selectie</button>
       <button id="tkCopy">Kopieer als fragment <kbd>⌘C</kbd></button>
-    </div>` : `<p class="hint">Dit fragment werkt als een take: solo, ↑/↓, <kbd>H</kbd>, <kbd>B</kbd> en <kbd>E</kbd>. Sleep de randen om het groter of kleiner te maken. Reparaties gelden voor de hele opname.</p>`}
+    </div>` : `<p class="hint">Dit fragment werkt als een take: solo, ↑/↓, <kbd>H</kbd>, <kbd>B</kbd> en <kbd>E</kbd>. Sleep het fragment met ✥ of ✋ om het te verschuiven, en de randen om het groter of kleiner te maken. Een selectie erin maak je met ↖. Reparaties gelden voor de hele opname.</p>`}
     <div class="row">
       <label>Naam <input type="text" id="tkName" value="${esc(t.name)}"></label>
       <label title="Positie van het begin van de opname op de tijdlijn, voor dit fragment">Sync <input type="number" id="tkSync" step="1" value="${ms(t.sync)}"> ms</label>
@@ -5162,7 +5171,7 @@ function inspectFrag(el, t) {
       <button id="tkAlignWin">Uitlijnvenster…</button>
       <button id="tkRepair">Bijgeluiden repareren… <kbd>R</kbd></button>
       <button id="frDel">Fragment weghalen</button>
-      <span class="hint">⌥-sleep de baan om het fragment handmatig te verschuiven.</span>
+      <span class="hint">Sleep het fragment (✥ of ✋) om het met de hand te verschuiven.</span>
     </div>`;
   if (r) { $('tkComp').onclick = compRange; $('tkPlayR').onclick = () => playRange(t, ra, rb); $('tkCopy').onclick = copyRange; }
   $('tkName').onchange = (e) => { t.name = e.target.value.trim() || t.name; buildHeads(); S.dirty = true; renderInspector(); scheduleSave(); };
