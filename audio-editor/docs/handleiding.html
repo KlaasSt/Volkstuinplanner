@@ -66,7 +66,7 @@
 <ol class="toc">
   <li>Starten, installeren en bewaren</li>
   <li>Het scherm</li>
-  <li>Werkwijzen per situatie (A t/m N)</li>
+  <li>Werkwijzen per situatie (A t/m N, met E2 voor het vergelijken van uitvoeringen)</li>
   <li>Een overgang fijn afstellen</li>
   <li>Het uitlijnvenster</li>
   <li>Toetscombinaties</li>
@@ -108,6 +108,7 @@
 <table>
   <thead><tr><th>Onderdeel</th><th>Wat het doet</th></tr></thead>
   <tr><td class="k">Tijdbalk (bovenaan)</td><td>Klik = afspeelkop zetten. Slepen = een stuk van de edit selecteren (om te vervangen, weg te halen, te herhalen of te exporteren). Markers verschijnen hier.</td></tr>
+  <tr><td class="k">Takes en fragmenten</td><td>Onder de edit staat elke opname in een eigen baan. Fragmenten (gestippeld, lichtere kleur, ↳ in de kop) staan direct onder hun opname. Met ▾ klap je een baan in.</td></tr>
   <tr><td class="k">EDIT-baan</td><td>Je eindversie. Clips, crossfades (⋈), fades, en de gouden doelpunten.</td></tr>
   <tr><td class="k">Take-banen</td><td>De originele opnames. Klik op de naam om een take te kiezen; <span class="btn">▶ solo</span> speelt die take alleen.</td></tr>
   <tr><td class="k">Paneel onderaan</td><td>Verandert met wat je selecteert: clip, crossfade, take, selectie, marker, uitlijnvenster, reparatievenster, exporteren of projecten. Met niets geselecteerd staat hier een korte uitleg.</td></tr>
@@ -191,6 +192,26 @@
   <li>Zet het doel met <kbd>D</kbd> (en <kbd>⇧</kbd><kbd>D</kbd>), of sleep in de tijdbalk over het stuk dat vervangen moet worden, en druk <kbd>E</kbd>.</li>
 </ol>
 <p><b>Een herhaling gebruiken:</b> klinkt een passage beter waar hij later in het stuk terugkomt? Wijs dat latere stuk in de take aan met <kbd>B</kbd> en <kbd>⇧</kbd><kbd>B</kbd>, sleep in de tijdbalk over het eerdere stuk en druk <kbd>E</kbd>. Het latere stuk blijft gewoon staan; je maakt een kopie. Gebruik hier geen <kbd>H</kbd>, want die zoekt dezelfde plek en niet de herhaling. Met een zelf aangewezen bronpunt blijft de take-baan liggen waar hij lag.</p>
+</div>
+
+<div class="scen">
+<h3>E2 · Uitvoeringen onder elkaar vergelijken (fragmenten)</h3>
+<div class="when">Alle uitvoeringen van een passage onder elkaar, om ze op het gehoor te vergelijken. Ook als een passage binnen één opname meerdere keren is gezongen, bijvoorbeeld omdat de dirigent een paar maten opnieuw liet zingen.</div>
+<ol>
+  <li>Sleep in een takebaan over het stuk dat je wilt, bijvoorbeeld de tweede keer van maat 34–41. Beluister het met <span class="btn">▶ Beluister selectie</span> en sleep opnieuw tot het klopt.</li>
+  <li>Druk <kbd>⌘</kbd><kbd>C</kbd>.</li>
+  <li>Zet de afspeelkop in de edit op de plek waar die passage hoort en druk <kbd>⌘</kbd><kbd>V</kbd>. Het stuk komt als <b>fragment</b> in een eigen baan direct onder zijn opname, al uitgelijnd op de edit. Lukt het uitlijnen niet, dan staat het op de afspeelkop: druk <kbd>H</kbd> of schuif het met <kbd>⌥</kbd>-slepen.</li>
+  <li>Herhaal dit voor elke uitvoering die je wilt vergelijken.</li>
+  <li>Speel af en wissel met <kbd>↑</kbd> en <kbd>↓</kbd> tussen de banen: je hoort meteen die uitvoering, op dezelfde plek in de muziek. De bovenste baan is de edit.</li>
+  <li>Bevalt er een? Laat die baan gekozen, zet <kbd>D</kbd> (en eventueel <kbd>⇧</kbd><kbd>D</kbd>) en druk <kbd>E</kbd>.</li>
+</ol>
+<figure>
+  <img src="img-fragmenten.png" alt="Fragmenten onder elkaar">
+  <figcaption>Onder de opname "Sessie met herhaling" staan twee fragmenten (gestippeld, lichtere kleur): de eerste en de tweede keer dat de passage werd gezongen, allebei uitgelijnd op de edit. Demo take 2 is ingeklapt.</figcaption>
+</figure>
+<p>Een fragment <b>verwijst</b> naar de opname: er wordt geen audio gekopieerd en de opname verandert niet. Het werkt als een take: solo, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>H</kbd> (alleen binnen het fragment, zodat het niet naar een andere herhaling springt), <kbd>B</kbd>, <kbd>E</kbd> en de galmstaart. Sleep de randen van het fragment om het groter of kleiner te maken. Reparaties gelden voor de hele opname, dus ook voor de fragmenten ervan.</p>
+<p><b>Weghalen</b> met × in de kop is altijd veilig: stukken uit het fragment die al in de edit staan, blijven klinken zoals ze waren. <kbd>⌘</kbd><kbd>Z</kbd> zet het fragment terug.</p>
+<p><b>Overzicht houden:</b> klik op het driehoekje ▾ voor een baan om hem in te klappen tot een smalle strook. <kbd>⌥</kbd>-klik klapt alle andere banen in, zodat alleen de baan die je bekijkt open blijft. Ingeklapte banen slaat <kbd>↑</kbd>/<kbd>↓</kbd> over. Het project onthoudt welke banen ingeklapt zijn.</p>
 </div>
 
 <div class="scen">
@@ -389,6 +410,9 @@
   <thead><tr><th>Toets</th><th>Functie</th></tr></thead>
   <tr class="group"><td colspan="2">Afspelen en navigeren</td></tr>
   <tr><td class="k"><kbd>Spatie</kbd></td><td>Afspelen / stoppen (met <i>Terug naar start</i> aan: terug naar het startpunt)</td></tr>
+  <tr><td class="k"><kbd>↑</kbd> <kbd>↓</kbd></td><td>Naar de baan erboven of eronder (de edit is de bovenste). Tijdens het afspelen hoor je meteen die baan, op dezelfde plek</td></tr>
+  <tr><td class="k"><kbd>⌘</kbd><kbd>C</kbd></td><td>Selectie in een take kopiëren als fragment</td></tr>
+  <tr><td class="k"><kbd>⌘</kbd><kbd>V</kbd></td><td>Fragment plakken onder de opname, uitgelijnd op de edit rond de afspeelkop</td></tr>
   <tr><td class="k"><kbd>L</kbd></td><td>Geselecteerd stuk of crossfade herhaald afspelen (nogmaals: stop)</td></tr>
   <tr><td class="k"><kbd>A</kbd></td><td>Geselecteerde crossfade beluisteren (met voor- en narol, en tot het eind van een galmstaart)</td></tr>
   <tr><td class="k"><kbd>←</kbd> <kbd>→</kbd></td><td>Afspeelkop 1 s terug/vooruit (<kbd>⇧</kbd>: 0,1 s), als er geen crossfade of uitlijnvenster geselecteerd is</td></tr>
@@ -461,7 +485,9 @@
   <tr><td>EDIT</td><td><kbd>⇧</kbd> + slepen</td><td>Stuk selecteren, net als in de tijdbalk</td></tr>
   <tr><td>Take-baan</td><td>Klik op de naam</td><td>Take kiezen (voor <kbd>E</kbd> en <kbd>B</kbd>)</td></tr>
   <tr><td>Take-baan</td><td>Slepen</td><td>Stuk uit de take selecteren (voor <kbd>E</kbd> op dezelfde tijd)</td></tr>
-  <tr><td>Take-baan</td><td><kbd>⌥</kbd> + slepen</td><td>Hele take verschuiven</td></tr>
+  <tr><td>Take-baan</td><td><kbd>⌥</kbd> + slepen</td><td>Hele take (of fragment) verschuiven</td></tr>
+  <tr><td>Fragment</td><td>Rand slepen</td><td>Fragment groter of kleiner maken</td></tr>
+  <tr><td>Kop van een baan</td><td>Klik op ▾ / ▸ (<kbd>⌥</kbd>-klik: alle andere)</td><td>Baan in- of uitklappen</td></tr>
   <tr><td>Take-baan</td><td>Slepen na <i>Donor-galm kiezen…</i></td><td>Dat stuk galm onder de overgang leggen</td></tr>
   <tr><td>Reparatievenster</td><td>Slepen in het spectrogram</td><td>Rechthoek om het bijgeluid (tijd en toonhoogte)</td></tr>
   <tr><td>Reparatievenster</td><td>Slepen in de golfvorm erboven</td><td>Gebied over alle frequenties</td></tr>
