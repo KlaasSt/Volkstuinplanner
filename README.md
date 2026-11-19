@@ -4,6 +4,8 @@ Deze map is bedoeld voor GitHub Pages.
 
 De app is statisch: bezoekers kunnen de bestanden op GitHub niet wijzigen. Ontwerpen worden alleen lokaal in de browser opgeslagen met `localStorage`. Export maakt een `.json`-bestand op het apparaat van de gebruiker; import leest een lokaal gekozen `.json`-bestand.
 
+Bediening in het kort: kies links een element of gewas en tik in de tuin (of sleep het erheen). Onder **Ontwerp** staan nieuw, kopie, naam wijzigen, exporteren/importeren, voorbeeldtuin en verwijderen. Met **?** zie je alle sneltoetsen (pijltjes verschuiven, ⌫ verwijdert, ⌘D dupliceert, Esc stopt). Pas bij elke wijziging `CACHE_NAME` in `sw.js` en de `?v=` in `index.html` aan.
+
 Zet geen persoonlijke ontwerpbestanden in deze GitHub-map. De `.gitignore` sluit gewone `.json`-bestanden uit, behalve `manifest.webmanifest`, zodat tuinontwerpen niet per ongeluk worden gepubliceerd.
 
 ## Take Crossfader (audio-editor)

@@ -1,0 +1,4 @@
+# Persoonlijke tuinontwerpen (export) niet publiceren
+*.json
+!manifest.webmanifest
+.DS_Store

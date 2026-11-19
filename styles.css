@@ -343,7 +343,8 @@ body[data-palette-dragging="true"] .garden-board {
   place-items: center;
   border-radius: 7px;
   color: white;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .crop-list {
@@ -368,7 +369,7 @@ body[data-palette-dragging="true"] .garden-board {
   grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
   gap: 9px;
-  padding: 10px;
+  padding: 10px;  text-align: left;
 }
 
 .crop-dot {
@@ -1014,7 +1015,10 @@ body[data-palette-dragging="true"] .garden-board {
   text-align: center;
 }
 
-.phase:empty {
+.phase:empty,
+.phase.sow:empty,
+.phase.plant:empty,
+.phase.harvest:empty {
   background: transparent;
 }
 
@@ -1028,6 +1032,12 @@ body[data-palette-dragging="true"] .garden-board {
 
 .phase.harvest {
   background: var(--clay);
+}
+
+.phase.sow:empty,
+.phase.plant:empty,
+.phase.harvest:empty {
+  background: transparent;
 }
 
 .modal-backdrop {
@@ -1302,6 +1312,315 @@ body[data-palette-dragging="true"] .garden-board {
   }
 }
 
+
+/* ---- 2026-11: menu, hints, hulp, planning, tablet ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(111, 154, 99, 0.55);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+}
+
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu[open] > summary {
+  background: #e7f0e3;
+  border-color: var(--green-2);
+}
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  min-width: 250px;
+  display: grid;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.menu-list hr {
+  width: 100%;
+  margin: 5px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.menu-item {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: #eef3ea;
+}
+
+.menu-item.danger {
+  color: var(--danger);
+}
+
+.hint-bar {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #eef3ea;
+  color: var(--green);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.canvas-panel {
+  grid-template-rows: auto auto 1fr;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  z-index: 200;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 11px 16px;
+  border-radius: 9px;
+  background: var(--ink);
+  color: #fffdf7;
+  font-size: 0.88rem;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+}
+
+.help-window {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.help-body {
+  padding: 4px 20px 20px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.help-body h3 {
+  margin: 16px 0 6px;
+  font-size: 0.92rem;
+}
+
+.help-body ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help-body table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.help-body td {
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.help-body td:first-child {
+  white-space: nowrap;
+  width: 42%;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #fffefa;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.empty-state {
+  padding: 14px 16px;
+  place-items: start;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.empty-state p + p {
+  margin-top: 8px;
+}
+
+.empty-state b {
+  color: var(--ink);
+}
+
+.fold {
+  margin-top: 12px;
+}
+
+.fold > summary {
+  margin-bottom: 9px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.add-fold > summary {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--green);
+  font-size: 0.84rem;
+}
+
+.add-fold .add-crop {
+  margin-top: 4px;
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.calendar-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.calendar-legend .sow::before { background: var(--gold); }
+.calendar-legend .plant::before { background: var(--green-2); }
+.calendar-legend .harvest::before { background: var(--clay); }
+
+.month-row.current {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(49, 88, 74, 0.25);
+}
+
+.month-row.current .month-name {
+  background: var(--green);
+  color: #fffdf7;
+}
+
+/* iPad en kleine laptops liggend: drie smalle kolommen i.p.v. een platgedrukte tuin */
+@media (min-width: 900px) and (max-width: 1120px) and (orientation: landscape) {
+  .topbar {
+    min-height: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .top-actions {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(200px, 230px) minmax(0, 1fr) minmax(220px, 260px);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "tools canvas details";
+    gap: 10px;
+    padding-top: 10px;
+  }
+
+  .details-panel {
+    display: block;
+  }
+
+  .details-panel section + section {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tool-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .tool-button {
+    min-height: 38px;
+    padding: 5px 8px;
+  }
+
+  .board-toolbar {
+    flex-wrap: wrap;
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  .board-actions {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 760px) {
+  .menu-list {
+    left: 0;
+    right: auto;
+  }
+
+  .top-actions {
+    gap: 8px;
+  }
+}
+
 @media print {
   @page {
     size: A4 landscape;
@@ -1326,7 +1645,9 @@ body[data-palette-dragging="true"] .garden-board {
 
   .topbar,
   .tools-panel,
-  .details-panel {
+  .details-panel,
+  .hint-bar,
+  .toast {
     display: none;
   }
 
