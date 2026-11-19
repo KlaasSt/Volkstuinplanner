@@ -9,7 +9,9 @@
     <meta name="theme-color" content="#31584a">
     <title>Tuinplanner</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=20260614-freeform-tight-bounds">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <link rel="stylesheet" href="styles.css?v=20261119">
   </head>
   <body class="no-js">
     <div class="app">
@@ -17,19 +19,29 @@
         <div>
           <p class="eyebrow">Volkstuin</p>
           <h1>Tuinplanner</h1>
-          <span class="version-label">versie bewerken</span>
         </div>
         <div class="top-actions">
-          <select id="designSelect" class="design-select" aria-label="Ontwerp kiezen"></select>
-          <button class="ghost-button" id="newDesignBtn">Nieuw</button>
-          <button class="ghost-button" id="saveAsBtn">Bewaar als</button>
-          <button class="ghost-button" id="exportBtn">Export</button>
-          <button class="ghost-button" id="importBtn">Import</button>
+          <select id="designSelect" class="design-select" aria-label="Ontwerp kiezen" title="Ontwerp kiezen"></select>
+          <details class="menu" id="designMenu">
+            <summary class="ghost-button">Ontwerp <span aria-hidden="true">▾</span></summary>
+            <div class="menu-list">
+              <button class="menu-item" id="newDesignBtn">Nieuw, leeg ontwerp…</button>
+              <button class="menu-item" id="saveAsBtn">Kopie bewaren als…</button>
+              <button class="menu-item" id="renameDesignBtn">Naam wijzigen…</button>
+              <hr>
+              <button class="menu-item" id="exportBtn">Exporteren als bestand</button>
+              <button class="menu-item" id="importBtn">Importeren uit bestand…</button>
+              <hr>
+              <button class="menu-item" id="sampleBtn">Voorbeeldtuin laden</button>
+              <button class="menu-item" id="clearBtn">Alle elementen weghalen</button>
+              <button class="menu-item danger" id="deleteDesignBtn">Ontwerp verwijderen…</button>
+            </div>
+          </details>
           <input id="importFile" type="file" accept="application/json,.json" hidden>
-          <button class="icon-button" id="undoBtn" title="Ongedaan maken" aria-label="Ongedaan maken">↶</button>
-          <button class="icon-button" id="redoBtn" title="Opnieuw" aria-label="Opnieuw">↷</button>
+          <button class="icon-button" id="undoBtn" title="Ongedaan maken (⌘Z)" aria-label="Ongedaan maken">↶</button>
+          <button class="icon-button" id="redoBtn" title="Opnieuw (⇧⌘Z)" aria-label="Opnieuw">↷</button>
           <button class="icon-button" id="printBtn" title="Afdrukken" aria-label="Afdrukken">⎙</button>
-          <button class="primary-button" id="sampleBtn">Voorbeeld</button>
+          <button class="icon-button" id="helpBtn" title="Sneltoetsen en tips" aria-label="Sneltoetsen en tips">?</button>
         </div>
       </header>
 
@@ -42,7 +54,7 @@
           <section>
             <div class="section-head">
               <h2>Maatvoering</h2>
-              <span id="areaLabel">0 m2</span>
+              <span id="areaLabel">0 m²</span>
             </div>
             <div class="field-grid">
               <label>
@@ -87,6 +99,8 @@
             <div class="section-head">
               <h2>Gewas</h2>
             </div>
+            <details class="fold add-fold">
+            <summary>Eigen gewas toevoegen</summary>
             <div class="add-crop">
               <label>
                 Nieuwe plant
@@ -112,22 +126,19 @@
               </div>
               <button id="addCropBtn" class="ghost-button">Voeg toe</button>
             </div>
-            <h3 class="list-title">Groente</h3>
-            <div class="crop-list" id="cropList"></div>
-          </section>
-
-          <section>
-            <div class="section-head">
-              <h2>Fruit</h2>
-            </div>
-            <div class="crop-list fruit-list" id="fruitList"></div>
-          </section>
-
-          <section>
-            <div class="section-head">
-              <h2>Kruiden</h2>
-            </div>
-            <div class="crop-list herb-list" id="herbList"></div>
+            </details>
+            <details class="fold" open>
+              <summary>Groente</summary>
+              <div class="crop-list" id="cropList"></div>
+            </details>
+            <details class="fold" open>
+              <summary>Fruit</summary>
+              <div class="crop-list fruit-list" id="fruitList"></div>
+            </details>
+            <details class="fold" open>
+              <summary>Kruiden</summary>
+              <div class="crop-list herb-list" id="herbList"></div>
+            </details>
           </section>
         </aside>
 
@@ -137,15 +148,15 @@
           <div class="board-toolbar">
             <div>
               <strong id="gardenTitle">Moestuin</strong>
-              <span id="selectionSummary">Geen vak geselecteerd</span>
+              <span id="selectionSummary">Niets geselecteerd</span>
             </div>
             <div class="board-actions">
               <label class="toggle">
                 <input id="snapToggle" type="checkbox" checked>
                 <span>Raster</span>
               </label>
-              <label class="select-label">
-                Stap
+              <label class="select-label" title="Rasterstap">
+                <span class="sr-only">Rasterstap</span>
                 <select id="gridSize">
                   <option value="2x1">2 x 1 m</option>
                   <option value="1x1" selected>1 x 1 m</option>
@@ -154,15 +165,15 @@
               </label>
               <div class="zoom-controls" aria-label="Zoom">
                 <button id="zoomOutBtn" class="icon-button" title="Uitzoomen" aria-label="Uitzoomen">−</button>
-                <button id="zoomResetBtn" class="ghost-button">100%</button>
+                <button id="zoomResetBtn" class="ghost-button" title="Passend maken (0)">100%</button>
                 <button id="zoomInBtn" class="icon-button" title="Inzoomen" aria-label="Inzoomen">+</button>
               </div>
-              <button id="boundaryEditBtn" class="ghost-button" type="button">Tuinrand</button>
-              <button id="addBoundaryPointBtn" class="ghost-button">Randpunt +</button>
-              <button id="removeBoundaryPointBtn" class="ghost-button">Randpunt −</button>
-              <button id="clearBtn" class="ghost-button">Leegmaken</button>
+              <button id="boundaryEditBtn" class="ghost-button" type="button" title="Sleep de hoekpunten om de vorm van de tuin aan te passen">Tuinrand</button>
+              <button id="addBoundaryPointBtn" class="ghost-button" hidden>Randpunt +</button>
+              <button id="removeBoundaryPointBtn" class="ghost-button" hidden>Randpunt −</button>
             </div>
           </div>
+          <div id="hintBar" class="hint-bar" role="status" aria-live="polite"></div>
           <div class="board-shell">
             <div class="board-measure">
               <div class="ruler-corner"></div>
@@ -181,7 +192,10 @@
             <div class="section-head">
               <h2>Details</h2>
             </div>
-            <div id="emptyDetails" class="empty-state">Selecteer een vak.</div>
+            <div id="emptyDetails" class="empty-state">
+              <p><b>Kies een element of gewas</b> links en tik in de tuin om het te plaatsen, of sleep het erheen.</p>
+              <p>Tik op een vak om het te verplaatsen, te vergroten of te bewerken.</p>
+            </div>
             <div id="detailsForm" class="details-form" hidden>
               <label>
                 Naam
@@ -233,7 +247,7 @@
                 <textarea id="itemNotes" rows="3"></textarea>
               </label>
               <button id="openGreenhouseBtn" class="primary-button" hidden>Open kas</button>
-              <details class="actions-menu">
+              <details class="actions-menu" open>
                 <summary>Bewerken</summary>
                 <div class="rotation-controls">
                   <button id="rotateLeftBtn" class="ghost-button">-5°</button>
@@ -255,7 +269,7 @@
                 </div>
               </details>
               <div class="shortcut-note">
-                ⌘Z · ⇧⌘Z · ⌘C · ⌘X · ⌘V
+                Pijltjes: verschuiven · ⌫: verwijderen · ⌘D: dupliceren · Esc: loslaten
               </div>
             </div>
           </section>
@@ -266,6 +280,7 @@
               <span id="planningMode">Alles</span>
             </div>
             <div id="cropInfo" class="crop-info"></div>
+            <div class="calendar-legend" aria-hidden="true"><span class="sow">Zaaien</span><span class="plant">Planten</span><span class="harvest">Oogsten</span></div>
             <div class="calendar" id="calendar"></div>
           </section>
         </aside>
@@ -298,6 +313,41 @@
       </section>
     </div>
 
-    <script src="app.js?v=20260614-freeform-tight-bounds"></script>
+    <div id="helpModal" class="modal-backdrop" hidden>
+      <section class="help-window" aria-label="Sneltoetsen en tips">
+        <header class="modal-head">
+          <div>
+            <p class="eyebrow">Hulp</p>
+            <h2>Sneltoetsen en tips</h2>
+          </div>
+          <button class="icon-button" id="closeHelpBtn" title="Sluiten" aria-label="Sluiten">×</button>
+        </header>
+        <div class="help-body">
+          <h3>Werken in de tuin</h3>
+          <ul>
+            <li>Kies links een element of gewas en tik in de tuin, of sleep het erheen.</li>
+            <li>Sleep een vak om het te verplaatsen; sleep een hoekbolletje om het groter of kleiner te maken.</li>
+            <li>Met <b>Tuinrand</b> sleep je de hoekpunten van de tuin zelf.</li>
+            <li>Alles wordt automatisch in deze browser bewaard. Maak met <b>Ontwerp → Exporteren</b> af en toe een reservekopie.</li>
+          </ul>
+          <h3>Sneltoetsen</h3>
+          <table>
+            <tr><td><kbd>⌘</kbd> <kbd>Z</kbd></td><td>Ongedaan maken</td></tr>
+            <tr><td><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>Z</kbd></td><td>Opnieuw</td></tr>
+            <tr><td><kbd>⌘</kbd> <kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Kopiëren / knippen / plakken</td></tr>
+            <tr><td><kbd>⌘</kbd> <kbd>D</kbd></td><td>Dupliceren</td></tr>
+            <tr><td><kbd>⌫</kbd> of <kbd>Delete</kbd></td><td>Geselecteerd vak verwijderen</td></tr>
+            <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></td><td>Vak 10 cm verschuiven (met <kbd>⇧</kbd>: 1 m)</td></tr>
+            <tr><td><kbd>R</kbd></td><td>Vak 90° draaien</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Plaatsen stoppen / selectie opheffen</td></tr>
+            <tr><td><kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>In- en uitzoomen / passend maken</td></tr>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="app.js?v=20261119"></script>
   </body>
 </html>

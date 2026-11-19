@@ -1,15 +1,15 @@
 const tools = [
-  { id: "crop", label: "Groente", icon: "G", color: "#83a75f", defaultSize: [2, 1.2] },
-  { id: "plant", label: "Plantje", icon: "P", color: "#8fbd55", defaultSize: [0.35, 0.35], shape: "circle" },
-  { id: "bed", label: "Teeltvak", icon: "T", color: "#a9845a", defaultSize: [2.5, 1.2] },
-  { id: "path", label: "Pad", icon: "P", color: "#c8b89d", defaultSize: [3, 0.6] },
-  { id: "shed", label: "Tuinhuis", icon: "H", color: "#b96f43", defaultSize: [2.2, 1.8] },
-  { id: "greenhouse", label: "Kas tomaat", icon: "K", color: "#9fd0c2", defaultSize: [2.5, 2], shape: "greenhouse", cropId: "tomaat" },
-  { id: "gate", label: "Toegang", icon: "I", color: "#5d6c74", defaultSize: [1.2, 0.4] },
-  { id: "water", label: "Waterton", icon: "W", color: "#77aabe", defaultSize: [1, 1], shape: "circle" },
-  { id: "compost", label: "Compost", icon: "C", color: "#7a614d", defaultSize: [1.2, 1.2] },
-  { id: "tree", label: "Fruit", icon: "F", color: "#7cab7b", defaultSize: [1.4, 1.4], shape: "circle" },
-  { id: "object", label: "Ander object", icon: "O", color: "#9f8f7a", defaultSize: [1.2, 1.2] }
+  { id: "crop", label: "Groente", icon: "🥬", color: "#83a75f", defaultSize: [2, 1.2] },
+  { id: "plant", label: "Plantje", icon: "🌱", color: "#8fbd55", defaultSize: [0.35, 0.35], shape: "circle" },
+  { id: "bed", label: "Teeltvak", icon: "▤", color: "#a9845a", defaultSize: [2.5, 1.2] },
+  { id: "path", label: "Pad", icon: "┅", color: "#c8b89d", defaultSize: [3, 0.6] },
+  { id: "shed", label: "Tuinhuis", icon: "⌂", color: "#b96f43", defaultSize: [2.2, 1.8] },
+  { id: "greenhouse", label: "Kas tomaat", icon: "🍅", color: "#9fd0c2", defaultSize: [2.5, 2], shape: "greenhouse", cropId: "tomaat" },
+  { id: "gate", label: "Toegang", icon: "⇥", color: "#5d6c74", defaultSize: [1.2, 0.4] },
+  { id: "water", label: "Waterton", icon: "💧", color: "#77aabe", defaultSize: [1, 1], shape: "circle" },
+  { id: "compost", label: "Compost", icon: "♻", color: "#7a614d", defaultSize: [1.2, 1.2] },
+  { id: "tree", label: "Fruit", icon: "🌳", color: "#7cab7b", defaultSize: [1.4, 1.4], shape: "circle" },
+  { id: "object", label: "Ander object", icon: "◇", color: "#9f8f7a", defaultSize: [1.2, 1.2] }
 ];
 
 const baseCrops = [
@@ -50,7 +50,7 @@ const months = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "
 const storageKey = "tuinplanner-state-v3";
 const designsKey = "tuinplanner-designs-v3";
 const currentDesignKey = "tuinplanner-current-design-v3";
-const appVersion = "freeform-tight-bounds-20260614";
+const appVersion = "20261119";
 const minItemSize = 0.1;
 const snapStep = 0.1;
 const gridOptions = {
@@ -137,6 +137,20 @@ const inputs = {
   itemShape: document.querySelector("#itemShape"),
   itemNotes: document.querySelector("#itemNotes")
 };
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+let toastTimer = null;
+function showToast(message, ms = 2600) {
+  const toast = document.querySelector("#toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, ms);
+}
 
 function allCrops() {
   return [...baseCrops, ...baseFruits, ...baseHerbs, ...(state.customCrops || []), ...(state.customFruits || []), ...(state.customHerbs || [])];
@@ -443,6 +457,11 @@ function currentStamp() {
   return state.stamp;
 }
 
+function revealBoardOnPhone() {
+  if (!window.matchMedia("(max-width: 760px)").matches) return;
+  document.querySelector(".canvas-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function selectPaletteTool(toolId) {
   state.activeTool = toolId;
   state.stamp = makeStamp(toolId, state.activeCrop);
@@ -451,6 +470,7 @@ function selectPaletteTool(toolId) {
   state.editBoundary = false;
   save();
   render();
+  revealBoardOnPhone();
 }
 
 function selectPaletteCrop(cropId) {
@@ -462,6 +482,7 @@ function selectPaletteCrop(cropId) {
   state.editBoundary = false;
   save();
   render();
+  revealBoardOnPhone();
 }
 
 function normalizeWorkMode(mode) {
@@ -740,9 +761,16 @@ function writeStorage(key, value) {
   }
 }
 
+let storageWarned = false;
 function saveDesignLibrary() {
-  writeStorage(designsKey, JSON.stringify(designLibrary));
+  const ok = writeStorage(designsKey, JSON.stringify(designLibrary));
   if (currentDesignId) writeStorage(currentDesignKey, currentDesignId);
+  if (!ok && !storageWarned) {
+    storageWarned = true;
+    showToast("Opslaan in deze browser lukt niet (geheugen vol of privévenster). Exporteer je ontwerp via Ontwerp → Exporteren.", 8000);
+  } else if (ok) {
+    storageWarned = false;
+  }
 }
 
 function createDesignFromState(name, sourceState = state) {
@@ -768,7 +796,8 @@ function clearPlacementMode() {
 
 function save() {
   migrateState();
-  writeStorage(storageKey, JSON.stringify(state));
+  // Losse kopie alleen als er nog geen ontwerpbibliotheek is (oude versies); anders dubbel opslaan vermijden.
+  if (!currentDesign()) writeStorage(storageKey, JSON.stringify(state));
 
   const design = currentDesign();
   if (design) {
@@ -972,6 +1001,7 @@ function switchDesign(designId) {
   migrateState();
   clearPlacementMode();
   history = [];
+  redoHistory = [];
   clipboardItem = null;
   greenhouseId = null;
   greenhousePlantId = null;
@@ -1005,6 +1035,58 @@ function saveAsDesign() {
   render();
 }
 
+function renameDesign() {
+  const design = currentDesign();
+  if (!design) return;
+  const name = window.prompt("Nieuwe naam voor dit ontwerp", design.name);
+  if (!name || !name.trim()) return;
+  design.name = name.trim();
+  saveDesignLibrary();
+  render();
+  showToast(`Naam gewijzigd in “${design.name}”`);
+}
+
+function deleteDesign() {
+  const design = currentDesign();
+  if (!design) return;
+  const others = designLibrary.designs.filter((candidate) => candidate.id !== design.id);
+  const question = others.length
+    ? `Ontwerp “${design.name}” verwijderen? Dit kan niet ongedaan worden gemaakt. Exporteer het eerst als je een reservekopie wilt.`
+    : `“${design.name}” is je enige ontwerp. Verwijderen maakt een nieuw, leeg ontwerp. Doorgaan?`;
+  if (!window.confirm(question)) return;
+  designLibrary.designs = others;
+  if (others.length) {
+    currentDesignId = null;
+    switchDesign(others[0].id);
+  } else {
+    state = blankStateFromCurrent();
+    migrateState();
+    createDesignFromState("Mijn tuin", state);
+    history = [];
+    redoHistory = [];
+    save();
+    render();
+  }
+  saveDesignLibrary();
+  showToast(`“${design.name}” is verwijderd`);
+}
+
+function loadSample() {
+  if (state.items.length && !window.confirm("De voorbeeldtuin vervangt wat er nu in dit ontwerp staat. (Ongedaan maken kan met ↶.) Doorgaan?")) return;
+  createSample(true);
+  showToast("Voorbeeldtuin geladen · ↶ maakt het ongedaan");
+}
+
+function clearItems() {
+  if (!state.items.length) return;
+  if (!window.confirm(`Alle ${state.items.length} elementen uit dit ontwerp weghalen? (Ongedaan maken kan met ↶.)`)) return;
+  withHistory(() => {
+    state.items = [];
+    state.selectedId = null;
+  });
+  showToast("Alles weggehaald · ↶ maakt het ongedaan");
+}
+
 function safeFileName(name) {
   return (name || "tuinontwerp")
     .toLowerCase()
@@ -1033,7 +1115,8 @@ function exportDesign() {
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Geëxporteerd als ${safeFileName(design.name)}.json`);
 }
 
 function importDesignFile(file) {
@@ -1052,9 +1135,11 @@ function importDesignFile(file) {
       migrateState();
       createDesignFromState(importedName, state);
       history = [];
+      redoHistory = [];
       clipboardItem = null;
       save();
       render();
+      showToast(`“${importedName}” geïmporteerd als nieuw ontwerp`);
     } catch {
       window.alert("Dit bestand kon niet worden ingelezen.");
     } finally {
@@ -1094,7 +1179,8 @@ function renderTools() {
     button.dataset.paletteType = "tool";
     button.dataset.toolId = tool.id;
     button.draggable = true;
-    button.innerHTML = `<span class="tool-icon" style="background:${tool.color}">${tool.icon}</span><span>${tool.label}</span>`;
+    button.innerHTML = `<span class="tool-icon" style="background:${tool.color}" aria-hidden="true">${tool.icon}</span><span>${tool.label}</span>`;
+    button.title = `${tool.label}: tik in de tuin om te plaatsen, of sleep`;
     button.addEventListener("pointerdown", (event) => startPaletteDrag(event, { toolId: tool.id }));
     button.addEventListener("dragstart", (event) => {
       applyPaletteData({ toolId: tool.id });
@@ -1143,7 +1229,7 @@ function cropButton(crop) {
     button.style.setProperty("--crop", crop.color);
     button.innerHTML = `
       <span class="crop-dot"></span>
-      <span class="crop-name">${crop.name}</span>
+      <span class="crop-name">${escapeHtml(crop.name)}</span>
       <small>
         <span>Zaaien ${monthRange(crop.sow)}</span>
         <span>Oogst ${monthRange(crop.harvest)}</span>
@@ -1214,7 +1300,7 @@ function renderBoard() {
     el.innerHTML = `
       ${plot.shape === "free" && isDrawing ? freeDrawMarkup(drawingPoints) : ""}
       ${plot.shape === "free" && !freeRect && !isDrawing ? freeSvgMarkup(plot.points) : ""}
-      <span class="plot-name">${plot.label}</span>
+      <span class="plot-name">${escapeHtml(plot.label)}</span>
       <span></span>
       <span class="plot-meta">${formatMeters(plot.w)} x ${formatMeters(plot.h)} m</span>
       <span class="resize-handle resize-nw" data-corner="nw" aria-hidden="true"></span>
@@ -1263,10 +1349,16 @@ function sizeBoard() {
   if (!shell) return;
 
   const style = getComputedStyle(shell);
-  const availableWidth = shell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-  const availableHeight = shell.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  // Ruimte voor de linialen (kolom/rij + tussenruimte) aftrekken, zodat de hele tuin in beeld past.
+  const mstyle = measure ? getComputedStyle(measure) : null;
+  const gap = mstyle ? parseFloat(mstyle.columnGap) || 0 : 0;
+  const rulerW = mstyle ? (parseFloat(mstyle.gridTemplateColumns) || 0) + gap : 0;
+  const rulerH = mstyle ? (parseFloat(mstyle.gridTemplateRows) || 0) + gap : 0;
+  const availableWidth = shell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - rulerW - 2;
+  const availableHeight = shell.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - rulerH - 2;
   const ratio = gardenWidth() / gardenHeight();
-  const baseWidth = Math.max(180, Math.min(availableWidth, availableHeight * ratio));
+  const fitHeight = availableHeight > 120 ? availableHeight * ratio : availableWidth;
+  const baseWidth = Math.max(180, Math.min(availableWidth, fitHeight));
   const width = baseWidth * clamp(state.zoom || 1, 0.5, 3);
   const height = width / ratio;
 
@@ -1354,16 +1446,20 @@ function renderDetails() {
   inputs.gardenRight.value = state.rightLength;
   inputs.gardenBottom.value = state.bottomWidth;
   inputs.gardenLeft.value = state.leftLength;
-  document.querySelector("#areaLabel").textContent = `${formatMeters(gardenArea())} m2`;
-  document.querySelector("#gardenTitle").textContent = `${formatMeters(state.topWidth)} x ${formatMeters(state.rightLength)} x ${formatMeters(state.bottomWidth)} x ${formatMeters(state.leftLength)} m`;
+  document.querySelector("#areaLabel").textContent = `${formatMeters(gardenArea())} m²`;
+  document.querySelector("#gardenTitle").textContent = `${currentDesign()?.name || "Mijn tuin"} · ${formatMeters(gardenArea())} m²`;
   document.querySelector("#printTitle").textContent = currentDesign()?.name || "Tuinplanner";
   document.querySelector("#snapToggle").checked = state.snap;
   document.querySelector("#gridSize").value = state.gridSize || "1x1";
   document.querySelector("#zoomResetBtn").textContent = `${Math.round((state.zoom || 1) * 100)}%`;
   const mode = currentWorkMode();
   document.querySelector("#boundaryEditBtn").dataset.active = String(mode === "boundary");
-  document.querySelector("#addBoundaryPointBtn").disabled = mode !== "boundary";
-  document.querySelector("#removeBoundaryPointBtn").disabled = mode !== "boundary";
+  document.querySelector("#boundaryEditBtn").textContent = mode === "boundary" ? "Tuinrand klaar" : "Tuinrand";
+  document.querySelector("#addBoundaryPointBtn").hidden = mode !== "boundary";
+  document.querySelector("#removeBoundaryPointBtn").hidden = mode !== "boundary";
+  renderHint(mode);
+  document.querySelector("#undoBtn").disabled = !history.length;
+  document.querySelector("#redoBtn").disabled = !redoHistory.length;
 
   const selected = selectedItem();
   const editable = selected || currentStamp();
@@ -1376,7 +1472,7 @@ function renderDetails() {
   if (!editable) {
     emptyDetails.hidden = false;
     detailsForm.hidden = true;
-    selectionSummary.textContent = "Geen vak geselecteerd";
+    selectionSummary.textContent = `${state.items.length} ${state.items.length === 1 ? "element" : "elementen"}`;
     planningMode.textContent = "Alles";
     document.querySelector(".freeform-actions").hidden = true;
     document.querySelector("#addPointBtn").disabled = true;
@@ -1404,10 +1500,25 @@ function renderDetails() {
   document.querySelector("#drawShapeBtn").disabled = !freeEditable;
   openGreenhouseBtn.hidden = editable.type !== "greenhouse" || !selected;
   selectionSummary.textContent = selected
-    ? `${selected.label} · ${formatMeters(selected.w * selected.h)} m2`
+    ? `${selected.label} · ${formatMeters(selected.w)} × ${formatMeters(selected.h)} m`
     : `Nieuw: ${editable.label}`;
   planningMode.textContent = editable.cropId ? editable.label : "Alles";
   renderPlanning(editable.cropId || null);
+}
+
+function renderHint(mode) {
+  const bar = document.querySelector("#hintBar");
+  if (!bar) return;
+  let text = "";
+  if (mode === "place") {
+    text = `Tik in de tuin om “${currentStamp()?.label || "element"}” te plaatsen · Esc om te stoppen`;
+  } else if (mode === "boundary") {
+    text = "Sleep de bolletjes om de tuinrand te vormen · Randpunt + voegt een hoek toe op de langste zijde";
+  } else if (state.drawingItemId) {
+    text = "Teken met je vinger of muis de nieuwe vorm binnen het vak";
+  }
+  bar.textContent = text;
+  bar.hidden = !text;
 }
 
 function renderPlanning(onlyCropId = null) {
@@ -1422,7 +1533,7 @@ function renderPlanning(onlyCropId = null) {
   }
 
   cropInfo.innerHTML = visibleCrops
-    .map((crop) => `<div><strong>${crop.name}</strong> · afstand ${crop.spacing}. ${crop.note}</div>`)
+    .map((crop) => `<div><strong>${escapeHtml(crop.name)}</strong> · afstand ${escapeHtml(crop.spacing)}. ${escapeHtml(crop.note)}</div>`)
     .join("");
 
   calendar.innerHTML = "";
@@ -1430,6 +1541,10 @@ function renderPlanning(onlyCropId = null) {
     const monthNumber = index + 1;
     const row = document.createElement("div");
     row.className = "month-row";
+    if (monthNumber === new Date().getMonth() + 1) {
+      row.classList.add("current");
+      row.title = "Deze maand";
+    }
     row.innerHTML = `
       <span class="month-name">${month}</span>
       <span class="phase sow">${phaseText(visibleCrops, "sow", monthNumber)}</span>
@@ -1773,8 +1888,50 @@ function moveInteraction(event) {
     resizePlotFromCorner(plot, interaction.original, dx, dy, interaction.corner, width, height);
   }
 
-  renderBoard();
-  renderDetails();
+  scheduleDragRender();
+}
+
+let dragFrame = 0;
+function scheduleDragRender() {
+  if (dragFrame) return;
+  dragFrame = requestAnimationFrame(() => {
+    dragFrame = 0;
+    if (interaction && (interaction.mode === "move" || interaction.mode === "resize")) {
+      if (updatePlotElement(interaction.id)) {
+        renderDetailsLight();
+        return;
+      }
+    }
+    renderBoard();
+    renderDetails();
+  });
+}
+
+// Tijdens slepen alleen het ene vak bijwerken in plaats van de hele tuin opnieuw op te bouwen.
+function updatePlotElement(id) {
+  const plot = state.items.find((candidate) => candidate.id === id);
+  const el = board.querySelector(`.plot-item[data-id="${CSS.escape(id)}"]`);
+  if (!plot || !el) return false;
+  const width = gardenWidth();
+  const height = gardenHeight();
+  el.style.left = `${(plot.x / width) * 100}%`;
+  el.style.top = `${(plot.y / height) * 100}%`;
+  el.style.width = `${(plot.w / width) * 100}%`;
+  el.style.height = `${(plot.h / height) * 100}%`;
+  const meta = el.querySelector(".plot-meta");
+  if (meta) meta.textContent = `${formatMeters(plot.w)} x ${formatMeters(plot.h)} m`;
+  if (interaction?.mode === "resize") fitPlotLabels();
+  return true;
+}
+
+function renderDetailsLight() {
+  const plot = selectedItem();
+  if (!plot) return;
+  inputs.itemX.value = plot.x;
+  inputs.itemY.value = plot.y;
+  inputs.itemW.value = plot.w;
+  inputs.itemH.value = plot.h;
+  document.querySelector("#selectionSummary").textContent = `${plot.label} · ${formatMeters(plot.w)} × ${formatMeters(plot.h)} m`;
 }
 
 function resizePlotFromCorner(plot, original, dx, dy, corner, boardWidth, boardHeight) {
@@ -1799,6 +1956,10 @@ function resizePlotFromCorner(plot, original, dx, dy, corner, boardWidth, boardH
 
 function endInteraction() {
   if (!interaction) return;
+  if (dragFrame) {
+    cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+  }
 
   const livePlot = state.items.find((candidate) => candidate.id === interaction.id);
   if (interaction.mode === "draw" && livePlot) {
@@ -1831,6 +1992,8 @@ function endInteraction() {
   }
 
   interaction = null;
+  renderBoard();
+  renderDetails();
 }
 
 function updateSelectedFromInputs() {
@@ -1921,6 +2084,18 @@ function attachEvents() {
   document.querySelector("#addCropBtn").addEventListener("click", addCustomCrop);
   designSelect?.addEventListener("change", (event) => switchDesign(event.target.value));
   document.querySelector("#newDesignBtn")?.addEventListener("click", createBlankDesign);
+  document.querySelector("#renameDesignBtn")?.addEventListener("click", renameDesign);
+  document.querySelector("#deleteDesignBtn")?.addEventListener("click", deleteDesign);
+  const designMenu = document.querySelector("#designMenu");
+  designMenu?.querySelectorAll(".menu-item").forEach((button) => button.addEventListener("click", () => { designMenu.open = false; }));
+  document.addEventListener("pointerdown", (event) => {
+    if (designMenu?.open && !designMenu.contains(event.target)) designMenu.open = false;
+  });
+  document.querySelector("#helpBtn")?.addEventListener("click", openHelp);
+  document.querySelector("#closeHelpBtn")?.addEventListener("click", closeHelp);
+  document.querySelector("#helpModal")?.addEventListener("pointerdown", (event) => {
+    if (event.target.id === "helpModal") closeHelp();
+  });
   document.querySelector("#saveAsBtn")?.addEventListener("click", saveAsDesign);
   document.querySelector("#exportBtn")?.addEventListener("click", exportDesign);
   document.querySelector("#importBtn")?.addEventListener("click", () => importFile?.click());
@@ -1952,13 +2127,7 @@ function attachEvents() {
   document.querySelector("#removePointBtn").addEventListener("click", removeFreePoint);
   document.querySelector("#drawShapeBtn").addEventListener("click", startDrawShape);
 
-  document.querySelector("#deleteBtn").addEventListener("click", () => {
-    if (!selectedItem()) return;
-    withHistory(() => {
-      state.items = state.items.filter((plot) => plot.id !== state.selectedId);
-      state.selectedId = null;
-    });
-  });
+  document.querySelector("#deleteBtn").addEventListener("click", deleteSelected);
   document.querySelector("#copyBtn").addEventListener("click", copySelected);
   document.querySelector("#cutBtn").addEventListener("click", cutSelected);
   document.querySelector("#pasteBtn").addEventListener("click", pasteClipboard);
@@ -1997,13 +2166,8 @@ function attachEvents() {
   });
 
   document.querySelector("#printBtn").addEventListener("click", () => window.print());
-  document.querySelector("#sampleBtn").addEventListener("click", () => createSample(true));
-  document.querySelector("#clearBtn").addEventListener("click", () => {
-    withHistory(() => {
-      state.items = [];
-      state.selectedId = null;
-    });
-  });
+  document.querySelector("#sampleBtn").addEventListener("click", loadSample);
+  document.querySelector("#clearBtn").addEventListener("click", clearItems);
 }
 
 function resizeGarden(key, value) {
@@ -2106,8 +2270,7 @@ function moveBoundaryPointer(event) {
   state.boundaryPoints[boundaryInteraction.index] = { x, y };
   state.selectedBoundaryIndex = boundaryInteraction.index;
   state.lastBoundaryIndex = boundaryInteraction.index;
-  renderBoard();
-  renderDetails();
+  scheduleDragRender();
 }
 
 function endBoundaryPointer() {
@@ -2334,8 +2497,51 @@ function endPanelSplitter() {
 
 function handleKeyboardShortcuts(event) {
   const usesCommand = event.metaKey || event.ctrlKey;
-  if (!usesCommand || isEditableTarget(event.target)) return;
+  if (isEditableTarget(event.target)) {
+    if (event.key === "Escape") event.target.blur();
+    return;
+  }
   const key = event.key.toLowerCase();
+
+  if (event.key === "Escape") {
+    if (!document.querySelector("#helpModal").hidden) { closeHelp(); return; }
+    if (!greenhouseModal.hidden) { closeGreenhouse(); return; }
+    const menu = document.querySelector("#designMenu");
+    if (menu?.open) { menu.open = false; return; }
+    if (state.drawingItemId || state.activeTool || currentWorkMode() !== "select" || state.selectedId) {
+      state.drawingItemId = null;
+      clearPlacementMode();
+      state.selectedId = null;
+      state.selectedBoundaryIndex = null;
+      save();
+      render();
+    }
+    return;
+  }
+
+  if (!usesCommand && !event.altKey) {
+    if (!greenhouseModal.hidden || !document.querySelector("#helpModal").hidden) return;
+    const selected = selectedItem();
+    if ((event.key === "Delete" || event.key === "Backspace") && selected) {
+      event.preventDefault();
+      deleteSelected();
+      return;
+    }
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[event.key] && selected) {
+      event.preventDefault();
+      const step = event.shiftKey ? 1 : 0.1;
+      nudgeSelected(arrows[event.key][0] * step, arrows[event.key][1] * step);
+      return;
+    }
+    if (key === "r" && selected) { rotateSelected(90); return; }
+    if (key === "+" || key === "=") { updateZoom(0.25); return; }
+    if (key === "-") { updateZoom(-0.25); return; }
+    if (key === "0") { setZoom(1); return; }
+    if (key === "?") { openHelp(); return; }
+    return;
+  }
+  if (!usesCommand) return;
 
   if (key === "z") {
     event.preventDefault();
@@ -2350,12 +2556,54 @@ function handleKeyboardShortcuts(event) {
   } else if (key === "v") {
     event.preventDefault();
     pasteClipboard();
+  } else if (key === "d") {
+    event.preventDefault();
+    duplicateSelected();
   }
+}
+
+let nudgeTimer = null;
+function nudgeSelected(dx, dy) {
+  const selected = selectedItem();
+  if (!selected) return;
+  // Opeenvolgende pijltjesstappen vormen één stap in de geschiedenis.
+  if (!nudgeTimer) {
+    history.push(JSON.stringify(state));
+    if (history.length > 40) history.shift();
+    redoHistory = [];
+  }
+  clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(() => { nudgeTimer = null; }, 800);
+  const position = clampPlotPosition(selected.x + dx, selected.y + dy, selected.w, selected.h, false);
+  selected.x = fine(position.x);
+  selected.y = fine(position.y);
+  save();
+  if (!updatePlotElement(selected.id)) renderBoard();
+  renderDetailsLight();
+}
+
+function deleteSelected() {
+  const selected = selectedItem();
+  if (!selected) return;
+  withHistory(() => {
+    state.items = state.items.filter((plot) => plot.id !== selected.id);
+    state.selectedId = null;
+  });
+  showToast(`“${selected.label}” verwijderd · ↶ maakt het ongedaan`);
+}
+
+function openHelp() {
+  document.querySelector("#helpModal").hidden = false;
+  document.querySelector("#closeHelpBtn").focus();
+}
+
+function closeHelp() {
+  document.querySelector("#helpModal").hidden = true;
 }
 
 function isEditableTarget(target) {
   const tag = target?.tagName?.toLowerCase();
-  return tag === "input" || tag === "textarea" || target?.isContentEditable;
+  return tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
 }
 
 function rotateSelected(delta) {
@@ -2468,7 +2716,7 @@ function renderGreenhouse() {
     button.className = "crop-button";
     button.dataset.active = greenhouseActiveCrop === crop.id;
     button.style.setProperty("--crop", crop.color);
-    button.innerHTML = `<span class="crop-dot"></span><span>${crop.name}</span><small>${monthRange(crop.harvest)}</small>`;
+    button.innerHTML = `<span class="crop-dot"></span><span>${escapeHtml(crop.name)}</span><small>${monthRange(crop.harvest)}</small>`;
     button.addEventListener("click", () => {
       greenhouseActiveCrop = crop.id;
       renderGreenhouse();
@@ -2539,6 +2787,7 @@ function startGreenhousePointer(event) {
   const plant = kas.children.find((candidate) => candidate.id === greenhousePlantId);
   greenhouseInteraction = {
     id: greenhousePlantId,
+    before: JSON.stringify(state),
     rect,
     startX: event.clientX,
     startY: event.clientY,
@@ -2566,7 +2815,12 @@ function moveGreenhousePlant(event) {
 
 function endGreenhousePlant() {
   if (!greenhouseInteraction) return;
-  if (greenhouseInteraction.changed) save();
+  if (greenhouseInteraction.changed) {
+    history.push(greenhouseInteraction.before);
+    if (history.length > 40) history.shift();
+    redoHistory = [];
+    save();
+  }
   greenhouseInteraction = null;
 }
 
